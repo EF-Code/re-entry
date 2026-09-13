@@ -68,6 +68,12 @@ def test_live_mode_requires_durable_storage_or_explicit_local_opt_in(
     assert client.get("/health").status_code == 200
 
 
+def test_unknown_runtime_mode_fails_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REENTRY_MODE", "staging")
+    assert client.get("/health").status_code == 503
+    assert client.get("/api/case").status_code == 503
+
+
 def test_request_body_limits_reject_oversized_ingress() -> None:
     oversized_json = client.post(
         "/invocations",

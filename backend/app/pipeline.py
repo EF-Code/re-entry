@@ -38,6 +38,8 @@ def configured_plan_run_limit() -> int:
 
     mode = os.getenv("REENTRY_MODE", "demo").strip().lower()
     if mode != "live":
+        if mode not in {"", "demo"}:
+            raise RuntimeError("REENTRY_MODE must be demo or live")
         return MAX_CASE_PLAN_RUNS
     raw_value = os.getenv("REENTRY_MAX_LIVE_PLAN_RUNS", str(DEFAULT_LIVE_CASE_PLAN_RUNS))
     try:

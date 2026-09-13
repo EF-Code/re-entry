@@ -325,7 +325,8 @@ def _default_case_id() -> str:
 
 
 def _runtime_mode() -> str:
-    return os.getenv("REENTRY_MODE", "demo").strip().lower() or "demo"
+    mode = os.getenv("REENTRY_MODE", "demo").strip().lower() or "demo"
+    return mode if mode in {"demo", "live"} else "invalid"
 
 
 def _ephemeral_store_is_explicitly_allowed() -> bool:
@@ -341,7 +342,10 @@ def _ephemeral_store_is_explicitly_allowed() -> bool:
 def _require_storage_ready() -> None:
     """Fail closed until live mode has a durable storage implementation."""
 
-    if _runtime_mode() == "live" and not _ephemeral_store_is_explicitly_allowed():
+    mode = _runtime_mode()
+    if mode == "invalid":
+        raise HTTPException(status_code=503, detail="Runtime is not ready: unsupported REENTRY_MODE")
+    if mode == "live" and not _ephemeral_store_is_explicitly_allowed():
         raise HTTPException(
             status_code=503,
             detail="Live runtime is not ready: durable case storage is required",
@@ -369,6 +373,18 @@ def _require_demo_mode() -> None:
 @app.get("/ping", include_in_schema=False)
 def health() -> JSONResponse:
     mode = _runtime_mode()
+    if mode == "invalid":
+        response = JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "re-entry",
+                "mode": mode,
+                "detail": "Unsupported REENTRY_MODE; use demo or live",
+            },
+        )
+        _set_security_headers(response, "/health")
+        return response
     if mode == "live" and not _ephemeral_store_is_explicitly_allowed():
         response = JSONResponse(
             status_code=503,
