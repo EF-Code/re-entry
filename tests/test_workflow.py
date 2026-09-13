@@ -145,7 +145,7 @@ def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(pipeline_module, "MAX_CASE_PLAN_RUNS", 0)
     capped_run = client.post("/api/cases/case-042/run")
     assert capped_run.status_code == 429
-    assert capped_run.json()["detail"] == "Case plan run limit reached (100)"
+    assert capped_run.json()["detail"] == "Case plan run limit reached (0)"
 
     capped_rejection = client.post("/api/cases/case-042/simulate-rejection")
     assert capped_rejection.status_code == 409
@@ -173,6 +173,70 @@ def test_run_is_repeatable_and_auditable() -> None:
     assert second["run_count"] == 2
     assert len(second["audit"]) == len(first["audit"]) + 1
     assert second["trace"][0]["agent"] == "Evidence Extractor"
+
+
+def test_live_plan_budget_is_lower_and_cannot_be_refreshed_by_demo_reset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client.post("/api/cases/case-042/reset")
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.setenv("REENTRY_MAX_LIVE_PLAN_RUNS", "1")
+
+    first = client.post("/api/cases/case-042/run")
+    assert first.status_code == 200
+    assert first.json()["run_count"] == 1
+    assert client.post("/api/cases/case-042/reset").status_code == 404
+
+    capped = client.post("/api/cases/case-042/run")
+    assert capped.status_code == 429
+    assert capped.json()["detail"] == "Case plan run limit reached (1)"
+
+
+def test_live_plan_budget_configuration_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.pipeline import configured_plan_run_limit
+
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.setenv("REENTRY_MAX_LIVE_PLAN_RUNS", "0")
+    with pytest.raises(RuntimeError, match="between 1"):
+        configured_plan_run_limit()
+
+    monkeypatch.setenv("REENTRY_MAX_LIVE_PLAN_RUNS", "101")
+    with pytest.raises(RuntimeError, match="between 1"):
+        configured_plan_run_limit()
+
+
+def test_store_does_not_block_unrelated_case_transitions() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    local_store = CaseStore()
+    second_case = local_store.get("case-042")
+    second_case.id = "case-043"
+    local_store.put(second_case)
+    slow_started = Event()
+    unrelated_finished = Event()
+    release_slow = Event()
+
+    def slow_transition(case):
+        slow_started.set()
+        unrelated_finished.wait(timeout=2)
+        release_slow.wait(timeout=2)
+        return case
+
+    def unrelated_transition(case):
+        unrelated_finished.set()
+        return case
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        slow = executor.submit(local_store.apply, "case-042", slow_transition)
+        assert slow_started.wait(timeout=1)
+        unrelated = executor.submit(local_store.apply, "case-043", unrelated_transition)
+        try:
+            unrelated.result(timeout=1)
+        finally:
+            release_slow.set()
+        slow.result(timeout=2)
+    assert unrelated_finished.is_set()
 
 
 def test_trace_counts_follow_case_mutations() -> None:
@@ -242,6 +306,8 @@ def test_live_snapshot_redacts_unreviewed_excerpts() -> None:
     snapshot = _snapshot(clone_demo_case(), include_unreviewed=False)
     assert "Harbor Mutual asks for a signed contents inventory" not in snapshot
     assert "$460 discrepancy is visible" not in snapshot
+    assert "account ending 1842" not in snapshot
+    assert "Case summary withheld until evidence is verified." in snapshot
     assert '"redacted": true' in snapshot
     assert '"review_queue"' in snapshot
     assert '"id": "ev-04"' in snapshot

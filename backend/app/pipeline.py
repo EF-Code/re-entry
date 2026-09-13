@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from hashlib import sha256
 
@@ -22,6 +23,33 @@ from .models import (
 from .strands_agent import plan_case
 
 MAX_CASE_PLAN_RUNS = 100
+DEFAULT_LIVE_CASE_PLAN_RUNS = 10
+MAX_CONFIGURED_LIVE_CASE_PLAN_RUNS = 100
+
+
+def configured_plan_run_limit() -> int:
+    """Return the per-case plan budget for the active runtime mode.
+
+    Demo runs are intentionally generous so the presentation can be reset and
+    replayed. Live mode uses a smaller, operator-configurable ceiling because
+    every pass may call a paid provider; the demo reset route is unavailable in
+    that mode, so the budget cannot be refreshed by an HTTP mutation.
+    """
+
+    mode = os.getenv("REENTRY_MODE", "demo").strip().lower()
+    if mode != "live":
+        return MAX_CASE_PLAN_RUNS
+    raw_value = os.getenv("REENTRY_MAX_LIVE_PLAN_RUNS", str(DEFAULT_LIVE_CASE_PLAN_RUNS))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("REENTRY_MAX_LIVE_PLAN_RUNS must be a positive integer") from exc
+    if not 1 <= value <= MAX_CONFIGURED_LIVE_CASE_PLAN_RUNS:
+        raise RuntimeError(
+            "REENTRY_MAX_LIVE_PLAN_RUNS must be between 1 and "
+            f"{MAX_CONFIGURED_LIVE_CASE_PLAN_RUNS}"
+        )
+    return value
 
 
 def _now() -> str:
@@ -36,7 +64,7 @@ def _id(prefix: str, *parts: str) -> str:
 def run_intake(case: CaseState) -> CaseState:
     """Run one repeatable plan pass and append a traceable audit event."""
 
-    if case.run_count >= MAX_CASE_PLAN_RUNS:
+    if case.run_count >= configured_plan_run_limit():
         raise ValueError("plan_run_limit_reached")
     decision = plan_case(case)
     case.mode = decision.mode

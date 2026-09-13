@@ -11,40 +11,52 @@ from .models import CaseState
 
 class CaseStore:
     def __init__(self) -> None:
-        self._lock = RLock()
+        self._registry_lock = RLock()
         self._cases: dict[str, CaseState] = {"case-042": clone_demo_case()}
+        self._case_locks: dict[str, RLock] = {"case-042": RLock()}
+
+    def _lock_for(self, case_id: str) -> RLock:
+        with self._registry_lock:
+            if case_id not in self._cases:
+                raise KeyError("case_not_found")
+            return self._case_locks.setdefault(case_id, RLock())
 
     def get(self, case_id: str) -> CaseState:
-        with self._lock:
-            case = self._cases.get(case_id)
-            if case is None:
-                raise KeyError("case_not_found")
-            return case.model_copy(deep=True)
+        case_lock = self._lock_for(case_id)
+        with case_lock, self._registry_lock:
+            return self._cases[case_id].model_copy(deep=True)
 
     def put(self, case: CaseState) -> CaseState:
-        with self._lock:
+        with self._registry_lock:
+            case_lock = self._case_locks.setdefault(case.id, RLock())
+        with case_lock, self._registry_lock:
             self._cases[case.id] = case.model_copy(deep=True)
-            return case.model_copy(deep=True)
+            return self._cases[case.id].model_copy(deep=True)
 
     def apply(self, case_id: str, transition: Callable[[CaseState], CaseState]) -> CaseState:
-        """Apply one case transition while holding the store lock.
+        """Apply one case transition while holding only that case's lock.
 
-        The demo runs in one process, so this prevents duplicate approvals and
-        lost updates between concurrent requests. A durable multi-worker store
-        remains required for production deployment.
+        A live planner may perform bounded network I/O during ``transition``.
+        Per-case locks keep approvals and plans serialized for one case while
+        allowing unrelated cases to progress independently in this demo
+        process. A durable multi-worker store remains required for production.
         """
 
-        with self._lock:
-            case = self._cases.get(case_id)
-            if case is None:
-                raise KeyError("case_not_found")
-            updated = transition(case.model_copy(deep=True))
-            self._cases[case_id] = updated.model_copy(deep=True)
-            return updated.model_copy(deep=True)
+        case_lock = self._lock_for(case_id)
+        with case_lock:
+            with self._registry_lock:
+                case = self._cases[case_id]
+                working = case.model_copy(deep=True)
+            updated = transition(working)
+            with self._registry_lock:
+                self._cases[case_id] = updated.model_copy(deep=True)
+                return updated.model_copy(deep=True)
 
     def reset(self, case_id: str) -> CaseState:
-        with self._lock:
+        case_lock = self._lock_for(case_id)
+        with case_lock:
             if case_id != "case-042":
                 raise KeyError("case_not_found")
-            self._cases[case_id] = clone_demo_case()
-            return self._cases[case_id].model_copy(deep=True)
+            with self._registry_lock:
+                self._cases[case_id] = clone_demo_case()
+                return self._cases[case_id].model_copy(deep=True)

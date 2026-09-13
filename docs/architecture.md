@@ -28,13 +28,17 @@ flowchart LR
    streamed without a replay buffer, subject to a per-chunk deadline and chunk
    cap, size-limited, filename-validated, and quarantined as `needs_review`.
    The demo also caps each case at 100 evidence records and 100 plan passes so
-   planner input and in-memory history remain bounded.
+   planner input and in-memory history remain bounded. Live mode uses a
+   separate non-resettable budget that defaults to 10 passes and is bounded to
+   100 by `REENTRY_MAX_LIVE_PLAN_RUNS`.
 2. The Strands-compatible coordinator builds a plan from the case snapshot.
    The demo adapter uses a deterministic `strands.Agent` + structured-output
    model with no network call. `REENTRY_MODE=live` swaps in
    `strands.Agent` + `BedrockModel`, requires AWS credentials, enforces the
    configured region/model allowlists, and excludes unreviewed evidence unless
-   an operator explicitly opts in.
+   an operator explicitly opts in. The verified-only snapshot also projects
+   action metadata and withholds case summaries, targets, and rationales that
+   are not required for planning.
 3. Evidence citations and a trace step are attached to each plan pass. Source
    text is data, never an instruction, and cannot mutate the case by itself.
 4. The safety gate classifies risk. Actions that share an address, create an

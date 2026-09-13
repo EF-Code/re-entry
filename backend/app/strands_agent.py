@@ -187,24 +187,30 @@ def _snapshot(case: CaseState, *, include_unreviewed: bool = True) -> str:
                 for citation in payload["citations"]
                 if citation["evidence_id"] in evidence_ids
             ]
-            if len(verified_citations) != len(payload["citations"]):
-                payload = {
-                    "id": payload["id"],
-                    "title": payload["title"],
-                    "status": payload["status"],
-                    "risk": payload["risk"],
-                    "requires_approval": payload["requires_approval"],
-                    "due": payload["due"],
-                    "citations": verified_citations,
-                    "redacted": True,
-                }
-            else:
-                payload["citations"] = verified_citations
+            # Do not expose targets, connector names, rationales, outcomes, or
+            # timestamps merely because an action happens to cite verified
+            # evidence. Those fields can contain personal data independent of
+            # the evidence excerpt and are not needed to choose a next step.
+            payload = {
+                "id": payload["id"],
+                "title": payload["title"],
+                "status": payload["status"],
+                "risk": payload["risk"],
+                "requires_approval": payload["requires_approval"],
+                "due": payload["due"],
+                "citations": verified_citations,
+            }
+            if len(verified_citations) != len(action.citations):
+                payload["redacted"] = True
         actions.append(payload)
     return json.dumps(
         {
             "case_id": case.id,
-            "summary": case.summary,
+            "summary": (
+                case.summary
+                if include_unreviewed
+                else "Case summary withheld until evidence is verified."
+            ),
             "evidence": [e.model_dump(mode="json") for e in evidence],
             "review_queue": [
                 {"id": item.id, "status": item.status.value}

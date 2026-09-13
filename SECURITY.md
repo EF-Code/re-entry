@@ -14,8 +14,10 @@ government submissions, insurance claims, or financial actions.
   values before JSON/multipart parsing, caps JSON requests at 64 KB, caps an
   upload request at the configured file limit plus 1 MB multipart overhead. It
   streams the body without retaining a replay buffer, caps the number of body
-  chunks, and applies a per-chunk read deadline. Each demo case is also capped
-  at 100 evidence records and 100 plan passes.
+  chunks, and applies a per-chunk read deadline. Upload hashing is incremental
+  and retains only a bounded excerpt prefix. Each demo case is also capped at
+  100 evidence records and 100 plan passes; live mode defaults to a separate,
+  non-resettable 10-pass budget (`REENTRY_MAX_LIVE_PLAN_RUNS`, bounded to 100).
 - Document excerpts are treated as untrusted data in the Strands system prompt;
   they cannot become tools or instructions. Live planning does not send
   `needs_review` or conflicting evidence unless
@@ -27,8 +29,10 @@ government submissions, insurance claims, or financial actions.
 - External actions are represented by local mock connectors. High-risk actions
   remain behind a deterministic `needs_approval` gate and record reviewer,
   note, citations, and outcome.
-- Case transitions are serialized in the in-memory store, preventing concurrent
-  requests from approving or recording the same action twice in the demo.
+- Case transitions are serialized per case in the in-memory store, preventing
+  concurrent requests from approving or recording the same action twice while
+  keeping an unrelated case from waiting behind a slow planner call in this
+  single-process demo.
 - Provider failures return a safe deterministic fallback; credentials and
   tracebacks are not returned to the browser.
 - `/health`, `/ping`, and `/api/*` responses are marked non-cacheable and the
