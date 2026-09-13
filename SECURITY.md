@@ -26,6 +26,11 @@ government submissions, insurance claims, or financial actions.
   `needs_review` or conflicting evidence unless
   `REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=true` is explicitly set; the default
   provider snapshot contains verified evidence only and a review queue of IDs.
+  Common direct identifiers (email addresses, phone numbers, street addresses,
+  and account-like identifiers) are redacted from provider text by default;
+  `REENTRY_LIVE_ALLOW_PII=true` is an explicit operator opt-in. This is a
+  minimization layer, not a complete PII classifier, and does not replace
+  telemetry filtering or a data-classification service.
 - Live Bedrock configuration is restricted to explicit region and model
   allowlists (`REENTRY_ALLOWED_AWS_REGIONS` and `REENTRY_ALLOWED_MODEL_IDS`),
   which default to the checked-in US geo profile and `us-east-1`.

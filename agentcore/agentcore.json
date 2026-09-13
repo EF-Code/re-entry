@@ -61,6 +61,10 @@
           "value": "false"
         },
         {
+          "name": "REENTRY_LIVE_ALLOW_PII",
+          "value": "false"
+        },
+        {
           "name": "REENTRY_ALLOWED_AWS_REGIONS",
           "value": "us-east-1"
         },

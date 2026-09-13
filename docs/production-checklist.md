@@ -8,7 +8,7 @@ claim that AWS infrastructure has been deployed.
 | --- | --- | --- |
 | Strands orchestration | **done locally** | `strands.Agent` with deterministic offline model; Bedrock adapter behind `REENTRY_MODE=live` |
 | Human approval boundary | **done locally** | `needs_approval` actions cannot be approved by the planner; approvals bind to and record the inspected case revision, and audit marks demo caller labels unverified |
-| Untrusted document handling | **done locally** | Bounded pre-parser, absolute/per-chunk request deadlines, incremental upload hashing, upload size, extension/path/control-character checks, per-case cap, and quarantine tests |
+| Untrusted document handling | **done locally** | Bounded pre-parser, absolute/per-chunk request deadlines, incremental upload hashing, upload size, extension/path/control-character/signature checks, per-case cap, and quarantine tests |
 | Safe provider failures | **done locally** | Live-mode exceptions fall back without exposing internals |
 | Container artifact | **done locally** | Digest-pinned multi-stage image; amd64/ARM64 builds, health smoke, non-root runtime, and ~89 MB local image size |
 | Bedrock model configuration | **done locally** | Live adapter defaults to the current US Claude Sonnet 4.5 geo inference profile and keeps an explicit 1,200-token cap |
@@ -18,6 +18,7 @@ claim that AWS infrastructure has been deployed.
 | Durable data | **guarded locally** | Live readiness rejects the process-local store by default; encrypted S3 objects, DynamoDB case graph, retention and deletion policy still required |
 | Rate limiting | **partial locally** | Non-resettable live per-case plan budget, four-turn/12,000-token agent envelope, process-wide in-flight request/body/planner caps, and in-process per-case serialization; API Gateway/application per-user and per-tenant limits still required |
 | Observability | pending | X-Ray, CloudWatch retention, connector receipts and alerting |
+| Provider data minimization | **partial locally** | Verified-only snapshots, common direct-identifier redaction, and sensitive-data opt-in; complete classification, telemetry filtering, KMS, retention, deletion, and residency policy still required |
 | Quality baseline | pending | Representative cases, refusal tests, prompt-injection tests, goal-success eval |
 | Python dependency integrity | **partial locally** | Runtime/CI transitive versions are exact-pinned and pip-audit is clean; add artifact hashes, SBOM, and signature/provenance checks before release |
 | Deployment | pending | AgentCore CLI/runtime config, ARM64 image, authorizer, and a verified public test URL |

@@ -435,12 +435,16 @@ def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.Monkey
 
 
 def test_live_data_policy_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.strands_agent import _live_data_policy_allows_unreviewed
+    from app.strands_agent import _live_data_policy_allows_pii, _live_data_policy_allows_unreviewed
 
     monkeypatch.delenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", raising=False)
     assert not _live_data_policy_allows_unreviewed()
     monkeypatch.setenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", "true")
     assert _live_data_policy_allows_unreviewed()
+    monkeypatch.delenv("REENTRY_LIVE_ALLOW_PII", raising=False)
+    assert not _live_data_policy_allows_pii()
+    monkeypatch.setenv("REENTRY_LIVE_ALLOW_PII", "true")
+    assert _live_data_policy_allows_pii()
 
 
 def test_live_snapshot_redacts_unreviewed_excerpts() -> None:
@@ -455,6 +459,23 @@ def test_live_snapshot_redacts_unreviewed_excerpts() -> None:
     assert '"redacted": true' in snapshot
     assert '"review_queue"' in snapshot
     assert '"id": "ev-04"' in snapshot
+
+
+def test_live_snapshot_minimizes_claimant_identifiers_by_default() -> None:
+    from app.demo_data import clone_demo_case
+    from app.strands_agent import _snapshot
+
+    snapshot = _snapshot(clone_demo_case(), include_unreviewed=True, include_sensitive=False)
+    assert "Maya Okafor" not in snapshot
+    assert "14 Wren Street" not in snapshot
+    assert "account ending 1842" not in snapshot
+    assert "[REDACTED_ADDRESS]" in snapshot
+    assert '"source"' not in snapshot
+    assert '"content_hash"' not in snapshot
+
+    sensitive_snapshot = _snapshot(clone_demo_case(), include_unreviewed=True, include_sensitive=True)
+    assert "Maya Okafor" in sensitive_snapshot
+    assert "14 Wren Street" in sensitive_snapshot
 
 
 def test_live_model_configuration_requires_allowlisted_region_and_model(

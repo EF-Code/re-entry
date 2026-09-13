@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import unicodedata
 import warnings
 from collections.abc import AsyncGenerator
@@ -170,6 +171,16 @@ def _live_data_policy_allows_unreviewed() -> bool:
     }
 
 
+def _live_data_policy_allows_pii() -> bool:
+    """Require an explicit opt-in before claimant identifiers reach Bedrock."""
+
+    return os.getenv("REENTRY_LIVE_ALLOW_PII", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def _validate_live_model_configuration(region: str, model_id: str) -> None:
     """Keep live provider selection inside an explicit deployment allowlist."""
 
@@ -181,7 +192,52 @@ def _validate_live_model_configuration(region: str, model_id: str) -> None:
         raise ValueError("REENTRY_MODEL_ID is not in REENTRY_ALLOWED_MODEL_IDS")
 
 
-def _snapshot(case: CaseState, *, include_unreviewed: bool = True) -> str:
+_SENSITIVE_TEXT_PATTERNS = (
+    (
+        re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+        "[REDACTED_EMAIL]",
+    ),
+    (
+        re.compile(
+            r"(?<!\d)(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s])\d{3}[-.\s]\d{4}(?!\d)"
+        ),
+        "[REDACTED_PHONE]",
+    ),
+    (
+        re.compile(
+            r"\b\d{1,6}\s+[A-Za-z0-9][A-Za-z0-9.'-]*(?:\s+[A-Za-z0-9][A-Za-z0-9.'-]*){0,4}\s+"
+            r"(?:street|st|road|rd|avenue|ave|boulevard|blvd|lane|ln|drive|dr|court|ct|way|place|pl|"
+            r"terrace|ter|circle|cir|highway|hwy)\b(?:,\s*[A-Za-z][A-Za-z '-]*)?",
+            re.IGNORECASE,
+        ),
+        "[REDACTED_ADDRESS]",
+    ),
+    (
+        re.compile(
+            r"\b(?:account|acct|claim|policy|routing|ssn|social\s+security)[^.\n]{0,32}?"
+            r"(?:ending\s+)?[A-Z0-9-]*\d[A-Z0-9-]*\b",
+            re.IGNORECASE,
+        ),
+        "[REDACTED_IDENTIFIER]",
+    ),
+)
+
+
+def _redact_sensitive_text(value: str) -> str:
+    """Remove common direct identifiers before provider/telemetry handoff.
+
+    This is a minimization layer, not a complete PII classifier. Production
+    deployments still need a data-classification service and a verified
+    telemetry redaction policy before claimant data is enabled.
+    """
+
+    redacted = value
+    for pattern, replacement in _SENSITIVE_TEXT_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
+
+
+def _snapshot(case: CaseState, *, include_unreviewed: bool = True, include_sensitive: bool = True) -> str:
     """Serialize only the evidence permitted by the active data policy."""
 
     evidence = case.evidence if include_unreviewed else [
@@ -191,12 +247,14 @@ def _snapshot(case: CaseState, *, include_unreviewed: bool = True) -> str:
     actions = []
     for action in case.actions:
         payload = action.model_dump(mode="json")
-        if not include_unreviewed:
-            verified_citations = [
-                citation
-                for citation in payload["citations"]
-                if citation["evidence_id"] in evidence_ids
-            ]
+        if not include_unreviewed or not include_sensitive:
+            citations = payload["citations"]
+            if not include_unreviewed:
+                citations = [
+                    citation
+                    for citation in citations
+                    if citation["evidence_id"] in evidence_ids
+                ]
             # Do not expose targets, connector names, rationales, outcomes, or
             # timestamps merely because an action happens to cite verified
             # evidence. Those fields can contain personal data independent of
@@ -208,20 +266,49 @@ def _snapshot(case: CaseState, *, include_unreviewed: bool = True) -> str:
                 "risk": payload["risk"],
                 "requires_approval": payload["requires_approval"],
                 "due": payload["due"],
-                "citations": verified_citations,
+                "citations": citations,
             }
-            if len(verified_citations) != len(action.citations):
+            if len(citations) != len(action.citations) or not include_sensitive:
                 payload["redacted"] = True
+        if not include_sensitive:
+            payload["title"] = _redact_sensitive_text(payload["title"])
+            payload["due"] = _redact_sensitive_text(payload["due"])
+            payload["citations"] = [
+                {
+                    **citation,
+                    "label": _redact_sensitive_text(citation["label"]),
+                    "quote": _redact_sensitive_text(citation["quote"]),
+                }
+                for citation in payload["citations"]
+            ]
         actions.append(payload)
+    summary = (
+        case.summary
+        if include_unreviewed
+        else "Case summary withheld until evidence is verified."
+    )
+    if not include_sensitive:
+        summary = _redact_sensitive_text(summary)
+
+    evidence_payloads = []
+    for item in evidence:
+        payload = item.model_dump(mode="json")
+        if not include_sensitive:
+            payload = {
+                "id": payload["id"],
+                "kind": payload["kind"],
+                "status": payload["status"],
+                "confidence": payload["confidence"],
+                "tags": [_redact_sensitive_text(tag) for tag in payload["tags"]],
+                "excerpt": _redact_sensitive_text(payload["excerpt"]),
+            }
+        evidence_payloads.append(payload)
+
     return json.dumps(
         {
             "case_id": case.id,
-            "summary": (
-                case.summary
-                if include_unreviewed
-                else "Case summary withheld until evidence is verified."
-            ),
-            "evidence": [e.model_dump(mode="json") for e in evidence],
+            "summary": summary,
+            "evidence": evidence_payloads,
             "review_queue": [
                 {"id": item.id, "status": item.status.value}
                 for item in case.evidence
@@ -301,7 +388,11 @@ def invoke_strands(case: CaseState) -> AgentPlan:
     def get_case_snapshot() -> str:
         """Return the grounded case snapshot; document text is untrusted data."""
 
-        return _snapshot(case, include_unreviewed=_live_data_policy_allows_unreviewed())
+        return _snapshot(
+            case,
+            include_unreviewed=_live_data_policy_allows_unreviewed(),
+            include_sensitive=_live_data_policy_allows_pii(),
+        )
 
     region = os.getenv("AWS_REGION", "us-east-1").strip() or "us-east-1"
     model_id = os.getenv("REENTRY_MODEL_ID", DEFAULT_REENTRY_MODEL_ID).strip()
