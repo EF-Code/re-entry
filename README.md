@@ -53,8 +53,9 @@ docker compose up --build
 
 Then open <http://127.0.0.1:8000>.
 
-Live Bedrock/Strands dependencies are optional while the deterministic demo is
-being built:
+The demo exercises a deterministic offline `strands.Agent` model. To enable the
+Bedrock-backed planner instead, configure AWS credentials and install the
+live extras:
 
 ```bash
 ~/.venv/bin/pip install -e ".[live]"

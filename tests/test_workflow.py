@@ -27,6 +27,7 @@ def test_run_is_repeatable_and_auditable() -> None:
     first = client.post("/api/cases/case-042/run").json()
     second = client.post("/api/cases/case-042/run").json()
     assert first["run_count"] == 1
+    assert first["mode"] == "demo-strands"
     assert second["run_count"] == 2
     assert len(second["audit"]) == len(first["audit"]) + 1
     assert second["trace"][0]["agent"] == "Evidence Extractor"

@@ -27,9 +27,9 @@ flowchart LR
    utility evidence. Uploaded files are size-limited, filename-validated, and
    quarantined as `needs_review`.
 2. The Strands-compatible coordinator builds a plan from the case snapshot.
-   The live adapter uses `strands.Agent` + `BedrockModel` only when
-   `REENTRY_MODE=live`; default demo mode is deterministic and requires no AWS
-   credentials.
+   The demo adapter uses a deterministic `strands.Agent` + structured-output
+   model with no network call. `REENTRY_MODE=live` swaps in
+   `strands.Agent` + `BedrockModel` and requires AWS credentials.
 3. Evidence citations and a trace step are attached to each plan pass. Source
    text is data, never an instruction, and cannot mutate the case by itself.
 4. The safety gate classifies risk. Actions that share an address, create an
@@ -55,4 +55,3 @@ AgentCore is deliberately not claimed as deployed in this repository yet: the
 local `agentcore` CLI was unavailable during the first build slice. The code
 keeps the runtime boundary explicit so adding Runtime, Gateway, JWT/SigV4 auth,
 and managed storage does not change the approval contract.
-

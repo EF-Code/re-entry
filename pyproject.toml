@@ -14,6 +14,7 @@ dependencies = [
   "fastapi>=0.115.0",
   "pydantic>=2.7.0",
   "python-multipart>=0.0.20",
+  "strands-agents>=1.0.0",
   "uvicorn[standard]>=0.30.0",
 ]
 
@@ -25,7 +26,6 @@ dev = [
 ]
 live = [
   "boto3>=1.40.0",
-  "strands-agents>=1.0.0",
 ]
 
 [tool.setuptools]
@@ -41,4 +41,3 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-

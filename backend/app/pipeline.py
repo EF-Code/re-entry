@@ -52,14 +52,14 @@ def run_intake(case: CaseState) -> CaseState:
             title="Recovery plan re-checked",
             detail=decision.summary,
             tone=TimelineTone.active,
-            source="Strands planner" if decision.mode == "live" else "Deterministic planner",
+            source="Strands planner" if decision.mode in {"live", "demo-strands"} else "Deterministic planner",
         )
     )
     case.audit.append(
         AuditEvent(
             id=_id("au", case.id, "run", str(case.run_count)),
             at=timestamp,
-            actor="Strands planner" if decision.mode == "live" else "Deterministic planner",
+            actor="Strands planner" if decision.mode in {"live", "demo-strands"} else "Deterministic planner",
             event_type="plan.rechecked",
             detail=decision.summary,
             citations=[e.id for e in case.evidence],
