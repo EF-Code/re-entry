@@ -72,6 +72,7 @@ s3transfer==0.19.2
 six==1.17.0
 sortedcontainers==2.4.0
 sse-starlette==3.4.11
+setuptools==84.0.0
 starlette==1.6.0
 stevedore==5.9.1
 strands-agents==1.55.1
