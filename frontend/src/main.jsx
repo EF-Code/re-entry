@@ -45,6 +45,11 @@ const iconPaths = {
   x: <><path d="m6 6 12 12M18 6 6 18" /></>,
 };
 
+async function responseError(response, fallback) {
+  const payload = await response.json().catch(() => ({}));
+  return payload.detail || fallback;
+}
+
 function Icon({ name, size = 18, strokeWidth = 1.8 }) {
   return (
     <svg aria-hidden="true" className="icon" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
@@ -79,7 +84,7 @@ function App() {
 
   const loadCase = async () => {
     const response = await fetch("/api/case");
-    if (!response.ok) throw new Error("Could not load the case");
+    if (!response.ok) throw new Error(await responseError(response, "Could not load the case"));
     setCaseData(await response.json());
     setLoadError(null);
   };
@@ -111,7 +116,7 @@ function App() {
     setBusy(true);
     try {
       const response = await fetch(`/api/cases/${caseData.id}/run`, { method: "POST" });
-      if (!response.ok) throw new Error("The recovery check could not finish");
+      if (!response.ok) throw new Error(await responseError(response, "The recovery check could not finish"));
       setCaseData(await response.json());
       setNotice({ type: "success", text: "Recovery plan re-checked. No external action was sent." });
     } catch (error) {
@@ -166,7 +171,7 @@ function App() {
     setBusy(true);
     try {
       const response = await fetch(`/api/cases/${caseData.id}/simulate-rejection`, { method: "POST" });
-      if (!response.ok) throw new Error("The mock connector did not respond");
+      if (!response.ok) throw new Error(await responseError(response, "The mock connector did not respond"));
       setCaseData(await response.json());
       setNotice({ type: "warning", text: "Connector rejection became evidence; RE:ENTRY added a cited follow-up." });
     } catch (error) {
