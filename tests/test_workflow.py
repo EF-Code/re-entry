@@ -478,6 +478,26 @@ def test_live_snapshot_minimizes_claimant_identifiers_by_default() -> None:
     assert "14 Wren Street" in sensitive_snapshot
 
 
+def test_live_plan_narrative_is_minimized_before_audit_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.strands_agent import AgentPlan, _minimize_live_plan_narrative
+
+    monkeypatch.delenv("REENTRY_LIVE_ALLOW_PII", raising=False)
+    plan = AgentPlan(
+        summary="Send the packet to 14 Wren Street.",
+        warnings=["Call +1 (555) 123-4567."],
+        confidence=0.5,
+    )
+    minimized = _minimize_live_plan_narrative(plan)
+    assert "14 Wren Street" not in minimized.summary
+    assert "[REDACTED_ADDRESS]" in minimized.summary
+    assert "123-4567" not in minimized.warnings[0]
+
+    monkeypatch.setenv("REENTRY_LIVE_ALLOW_PII", "true")
+    assert _minimize_live_plan_narrative(plan).summary == plan.summary
+
+
 def test_live_model_configuration_requires_allowlisted_region_and_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

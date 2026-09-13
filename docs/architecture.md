@@ -43,8 +43,9 @@ flowchart LR
    an operator explicitly opts in. The verified-only snapshot also projects
    action metadata and withholds case summaries, targets, and rationales that
    are not required for planning. Common direct identifiers in provider text
-   are redacted by default; `REENTRY_LIVE_ALLOW_PII=true` is an explicit,
-   deployment-reviewed opt-in rather than a default. This is a minimization
+   and live model narratives are redacted by default;
+   `REENTRY_LIVE_ALLOW_PII=true` is an explicit, deployment-reviewed opt-in
+   rather than a default. This is a minimization
    layer, not a complete PII classifier. Live readiness fails closed until a durable
    case store is configured; `REENTRY_ALLOW_EPHEMERAL_STORE=true` is reserved
    for local synthetic-provider tests.

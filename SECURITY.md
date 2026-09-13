@@ -27,7 +27,8 @@ government submissions, insurance claims, or financial actions.
   `REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=true` is explicitly set; the default
   provider snapshot contains verified evidence only and a review queue of IDs.
   Common direct identifiers (email addresses, phone numbers, street addresses,
-  and account-like identifiers) are redacted from provider text by default;
+  and account-like identifiers) are redacted from provider text and live model
+  narratives by default;
   `REENTRY_LIVE_ALLOW_PII=true` is an explicit operator opt-in. This is a
   minimization layer, not a complete PII classifier, and does not replace
   telemetry filtering or a data-classification service.

@@ -237,6 +237,19 @@ def _redact_sensitive_text(value: str) -> str:
     return redacted
 
 
+def _minimize_live_plan_narrative(plan: AgentPlan) -> AgentPlan:
+    """Keep model-authored text from reintroducing identifiers after planning."""
+
+    if _live_data_policy_allows_pii():
+        return plan
+    return AgentPlan(
+        summary=_redact_sensitive_text(plan.summary)[:600],
+        recommended_action_ids=plan.recommended_action_ids,
+        warnings=[_redact_sensitive_text(warning)[:300] for warning in plan.warnings],
+        confidence=plan.confidence,
+    )
+
+
 def _snapshot(case: CaseState, *, include_unreviewed: bool = True, include_sensitive: bool = True) -> str:
     """Serialize only the evidence permitted by the active data policy."""
 
@@ -461,7 +474,7 @@ def plan_case(case: CaseState) -> PlannerDecision:
         raise ValueError("unsupported REENTRY_MODE")
 
     try:
-        plan = _ground_plan(invoke_strands(case), case)
+        plan = _minimize_live_plan_narrative(_ground_plan(invoke_strands(case), case))
         return PlannerDecision(mode="live", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
     except Exception as exc:  # noqa: BLE001 - provider/SDK failures must fail closed
         # Never expose provider credentials, tracebacks, or model internals to
