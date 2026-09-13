@@ -8,8 +8,9 @@ transition can be recorded without asking a language model to invent a schema.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EvidenceKind(StrEnum):
@@ -137,6 +138,31 @@ class CaseState(BaseModel):
 class ApprovalRequest(BaseModel):
     reviewer: str = Field(default="Demo reviewer", min_length=2, max_length=80)
     note: str = Field(default="Approved after reviewing the cited evidence.", max_length=500)
+
+    @field_validator("reviewer")
+    @classmethod
+    def reviewer_must_contain_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 2:
+            raise ValueError("reviewer must contain at least two non-whitespace characters")
+        return cleaned
+
+
+class RuntimeInvocation(BaseModel):
+    """Small, bounded payload for AgentCore's HTTP invocation contract."""
+
+    case_id: str | None = Field(default=None, max_length=64)
+    operation: Literal["plan"] = "plan"
+
+    @field_validator("case_id")
+    @classmethod
+    def case_id_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned or any(ord(character) < 32 or ord(character) == 127 for character in cleaned):
+            raise ValueError("case_id must contain printable characters")
+        return cleaned
 
 
 class UploadReceipt(BaseModel):

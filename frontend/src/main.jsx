@@ -125,6 +125,10 @@ function App() {
     setBusy(true);
     try {
       const response = await fetch(`/api/cases/${caseData.id}/reset`, { method: "POST" });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.detail || "The synthetic case could not be reset");
+      }
       setCaseData(await response.json());
       setSelectedEvidence(null);
       setApprovalAction(null);
