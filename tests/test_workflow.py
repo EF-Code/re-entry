@@ -224,17 +224,13 @@ def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.Monkey
     assert "Live planner was unavailable" in fallback.json()["audit"][-1]["detail"]
 
 
-def test_live_planner_blocks_unreviewed_evidence_without_explicit_opt_in(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.demo_data import clone_demo_case
-    from app.strands_agent import plan_case
+def test_live_data_policy_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.strands_agent import _live_data_policy_allows_unreviewed
 
-    monkeypatch.setenv("REENTRY_MODE", "live")
     monkeypatch.delenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", raising=False)
-    decision = plan_case(clone_demo_case())
-    assert decision.mode == "demo-fallback"
-    assert "deployment data/model policy" in decision.warnings[0]
+    assert not _live_data_policy_allows_unreviewed()
+    monkeypatch.setenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", "true")
+    assert _live_data_policy_allows_unreviewed()
 
 
 def test_live_snapshot_redacts_unreviewed_excerpts() -> None:

@@ -17,9 +17,9 @@ government submissions, insurance claims, or financial actions.
   chunks, and applies a per-chunk read deadline. Each demo case is also capped
   at 100 evidence records and 100 plan passes.
 - Document excerpts are treated as untrusted data in the Strands system prompt;
-  they cannot become tools or instructions. Live planning refuses to send
+  they cannot become tools or instructions. Live planning does not send
   `needs_review` or conflicting evidence unless
-  `REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=true` is explicitly set; otherwise the
+  `REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=true` is explicitly set; the default
   provider snapshot contains verified evidence only and a review queue of IDs.
 - Live Bedrock configuration is restricted to explicit region and model
   allowlists (`REENTRY_ALLOWED_AWS_REGIONS` and `REENTRY_ALLOWED_MODEL_IDS`),

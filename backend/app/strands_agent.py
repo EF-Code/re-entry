@@ -278,12 +278,6 @@ def invoke_strands(case: CaseState) -> AgentPlan:
     model_id = os.getenv("REENTRY_MODEL_ID", DEFAULT_REENTRY_MODEL_ID).strip()
     if not model_id or len(model_id) > 256:
         raise ValueError("REENTRY_MODEL_ID must be a non-empty model identifier")
-    if not _live_data_policy_allows_unreviewed() and any(
-        item.status.value != "verified" for item in case.evidence
-    ):
-        raise ValueError(
-            "Live planning requires REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=true for unreviewed evidence"
-        )
     _validate_live_model_configuration(region, model_id)
     model = BedrockModel(
         model_id=model_id,
@@ -342,10 +336,7 @@ def plan_case(case: CaseState) -> PlannerDecision:
             type(exc).__name__,
         )
         warning = "Bedrock planner unavailable; no external action was attempted."
-        if isinstance(exc, ValueError) and (
-            "REENTRY_LIVE_ALLOW_UNREVIEWED_DATA" in str(exc)
-            or "REENTRY_ALLOWED_" in str(exc)
-        ):
+        if isinstance(exc, ValueError) and "REENTRY_ALLOWED_" in str(exc):
             warning = "Live planner blocked by the deployment data/model policy; no external action was attempted."
         return PlannerDecision(
             mode="demo-fallback",
