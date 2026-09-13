@@ -247,6 +247,23 @@ def test_plan_requests_fail_fast_when_process_capacity_is_exhausted(
     assert response.json()["detail"] == "Planner capacity exhausted"
 
 
+def test_plan_slot_is_released_when_transition_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    from threading import BoundedSemaphore
+
+    slot = BoundedSemaphore(1)
+    monkeypatch.setattr(main_module, "_plan_slots", slot)
+
+    def fail_apply(_: str, __) -> object:
+        raise RuntimeError("planner transition failed")
+
+    monkeypatch.setattr(main_module.store, "apply", fail_apply)
+    with pytest.raises(RuntimeError, match="transition failed"):
+        main_module._apply_plan("case-042")
+
+    assert slot.acquire(blocking=False)
+    slot.release()
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
