@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import unicodedata
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EvidenceKind(StrEnum):
@@ -52,89 +52,99 @@ class TimelineTone(StrEnum):
 
 
 class Citation(BaseModel):
-    evidence_id: str
-    label: str
-    quote: str
+    evidence_id: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=120)
+    quote: str = Field(min_length=1, max_length=500)
 
 
 class Evidence(BaseModel):
-    id: str
-    title: str
+    id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=255)
     kind: EvidenceKind
-    source: str
-    received_at: str
+    source: str = Field(min_length=1, max_length=160)
+    received_at: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
     status: EvidenceStatus
-    excerpt: str
-    tags: list[str] = Field(default_factory=list)
-    content_hash: str | None = None
+    excerpt: str = Field(min_length=1, max_length=280)
+    tags: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        default_factory=list, max_length=20
+    )
+    content_hash: str | None = Field(default=None, max_length=128)
 
 
 class Action(BaseModel):
-    id: str
-    title: str
-    description: str
-    connector: str
+    id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=160)
+    description: str = Field(min_length=1, max_length=600)
+    connector: str = Field(min_length=1, max_length=160)
     status: ActionStatus
     risk: RiskLevel
     requires_approval: bool
-    due: str
-    target: str
-    rationale: str
-    citations: list[Citation] = Field(default_factory=list)
-    outcome: str | None = None
-    rejection_reason: str | None = None
-    created_at: str
-    updated_at: str
+    due: str = Field(min_length=1, max_length=80)
+    target: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=600)
+    citations: list[Citation] = Field(default_factory=list, max_length=20)
+    outcome: str | None = Field(default=None, max_length=600)
+    rejection_reason: str | None = Field(default=None, max_length=600)
+    created_at: str = Field(min_length=1, max_length=80)
+    updated_at: str = Field(min_length=1, max_length=80)
+
+    @model_validator(mode="after")
+    def high_risk_actions_require_approval(self) -> Action:
+        if self.risk == RiskLevel.high and not self.requires_approval:
+            raise ValueError("high-risk actions must require human approval")
+        return self
 
 
 class TimelineEvent(BaseModel):
-    id: str
-    at: str
-    title: str
-    detail: str
+    id: str = Field(min_length=1, max_length=64)
+    at: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=160)
+    detail: str = Field(min_length=1, max_length=600)
     tone: TimelineTone = TimelineTone.neutral
-    source: str = "RE:ENTRY"
+    source: str = Field(default="RE:ENTRY", min_length=1, max_length=160)
 
 
 class AuditEvent(BaseModel):
-    id: str
-    at: str
-    actor: str
+    id: str = Field(min_length=1, max_length=128)
+    at: str = Field(min_length=1, max_length=80)
+    actor: str = Field(min_length=1, max_length=160)
     actor_trust: Literal["system", "unverified_caller", "authenticated_principal"] = "system"
-    event_type: str
-    detail: str
-    citations: list[str] = Field(default_factory=list)
+    event_type: str = Field(min_length=1, max_length=80)
+    detail: str = Field(min_length=1, max_length=600)
+    citations: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default_factory=list, max_length=100
+    )
     reversible: bool = True
 
 
 class TraceStep(BaseModel):
-    id: str
-    agent: str
-    status: str
-    detail: str
-    evidence_count: int = 0
-    action_count: int = 0
-    duration_ms: int = 0
+    id: str = Field(min_length=1, max_length=64)
+    agent: str = Field(min_length=1, max_length=120)
+    status: str = Field(min_length=1, max_length=40)
+    detail: str = Field(min_length=1, max_length=600)
+    evidence_count: int = Field(default=0, ge=0, le=100)
+    action_count: int = Field(default=0, ge=0, le=100)
+    duration_ms: int = Field(default=0, ge=0, le=300_000)
 
 
 class CaseState(BaseModel):
-    id: str
-    title: str
-    county: str
-    opened_at: str
-    phase: str
+    id: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=160)
+    county: str = Field(min_length=1, max_length=120)
+    opened_at: str = Field(min_length=1, max_length=80)
+    phase: str = Field(min_length=1, max_length=80)
     priority: RiskLevel
-    summary: str
-    next_deadline: str
+    summary: str = Field(min_length=1, max_length=600)
+    next_deadline: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
-    mode: str = "demo"
-    run_count: int = 0
-    evidence: list[Evidence] = Field(default_factory=list)
-    actions: list[Action] = Field(default_factory=list)
-    timeline: list[TimelineEvent] = Field(default_factory=list)
-    audit: list[AuditEvent] = Field(default_factory=list)
-    trace: list[TraceStep] = Field(default_factory=list)
+    mode: str = Field(default="demo", min_length=1, max_length=40)
+    run_count: int = Field(default=0, ge=0, le=100_000)
+    evidence: list[Evidence] = Field(default_factory=list, max_length=100)
+    actions: list[Action] = Field(default_factory=list, max_length=100)
+    timeline: list[TimelineEvent] = Field(default_factory=list, max_length=1_000)
+    audit: list[AuditEvent] = Field(default_factory=list, max_length=1_000)
+    trace: list[TraceStep] = Field(default_factory=list, max_length=100)
 
 
 class ApprovalRequest(BaseModel):

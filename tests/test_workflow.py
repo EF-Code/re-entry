@@ -376,6 +376,21 @@ def test_model_narrative_is_normalized_before_audit_use() -> None:
         AgentPlan(summary="unsafe\u0000summary", confidence=0.5)
 
 
+def test_domain_models_bound_narrative_fields_and_risk_gate() -> None:
+    from app.demo_data import clone_demo_case
+    from app.models import Action, Evidence
+
+    evidence_payload = clone_demo_case().evidence[0].model_dump()
+    evidence_payload["excerpt"] = "x" * 281
+    with pytest.raises(ValueError, match="at most 280"):
+        Evidence.model_validate(evidence_payload)
+
+    unsafe_action = clone_demo_case().actions[1].model_dump()
+    unsafe_action["requires_approval"] = False
+    with pytest.raises(ValueError, match="high-risk actions must require"):
+        Action.model_validate(unsafe_action)
+
+
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_CASE_ID", "does-not-exist")
     response = client.get("/api/case")
