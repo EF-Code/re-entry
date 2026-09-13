@@ -348,7 +348,8 @@ def invoke_strands(case: CaseState) -> AgentPlan:
 def plan_case(case: CaseState) -> PlannerDecision:
     """Use live Strands only when explicitly enabled, with a safe fallback."""
 
-    if os.getenv("REENTRY_MODE", "demo").strip().lower() != "live":
+    mode = os.getenv("REENTRY_MODE", "demo").strip().lower() or "demo"
+    if mode == "demo":
         try:
             plan = _ground_plan(invoke_demo_strands(case), case)
             return PlannerDecision(mode="demo-strands", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
@@ -365,6 +366,8 @@ def plan_case(case: CaseState) -> PlannerDecision:
                 warnings=["Strands SDK unavailable; no external action was attempted."],
                 confidence=case.confidence,
             )
+    if mode != "live":
+        raise ValueError("unsupported REENTRY_MODE")
 
     try:
         plan = _ground_plan(invoke_strands(case), case)

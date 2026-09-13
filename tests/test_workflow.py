@@ -6,7 +6,7 @@ from app import main as main_module
 from app.main import app
 from app.pipeline import approve_action
 from app.store import CaseStore
-from app.strands_agent import AgentPlan, _ground_plan
+from app.strands_agent import AgentPlan, _ground_plan, plan_case
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -72,6 +72,14 @@ def test_unknown_runtime_mode_fails_readiness(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("REENTRY_MODE", "staging")
     assert client.get("/health").status_code == 503
     assert client.get("/api/case").status_code == 503
+
+
+def test_planner_rejects_unknown_runtime_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.demo_data import clone_demo_case
+
+    monkeypatch.setenv("REENTRY_MODE", "staging")
+    with pytest.raises(ValueError, match="unsupported REENTRY_MODE"):
+        plan_case(clone_demo_case())
 
 
 def test_request_body_limits_reject_oversized_ingress() -> None:
