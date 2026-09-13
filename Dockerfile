@@ -15,8 +15,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY backend/ ./backend/
-RUN python -m pip install --no-cache-dir .
+RUN python -m pip install --no-cache-dir --default-timeout=120 .
 COPY --from=web-build /web/dist ./frontend/dist
 EXPOSE 8080
 CMD ["uvicorn", "app.main:app", "--app-dir", "backend", "--host", "0.0.0.0", "--port", "8080"]
-
