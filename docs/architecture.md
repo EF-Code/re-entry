@@ -42,6 +42,8 @@ flowchart LR
    are not required for planning. Live readiness fails closed until a durable
    case store is configured; `REENTRY_ALLOW_EPHEMERAL_STORE=true` is reserved
    for local synthetic-provider tests.
+   Each live request is bounded to four agent turns, 1,200 output tokens, and
+   12,000 total tokens; provider retries and read timeouts remain bounded.
 3. Evidence citations and a trace step are attached to each plan pass. Source
    text is data, never an instruction, and cannot mutate the case by itself.
 4. The safety gate classifies risk. Actions that share an address, create an

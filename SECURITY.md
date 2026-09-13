@@ -26,6 +26,9 @@ government submissions, insurance claims, or financial actions.
 - Live Bedrock configuration is restricted to explicit region and model
   allowlists (`REENTRY_ALLOWED_AWS_REGIONS` and `REENTRY_ALLOWED_MODEL_IDS`),
   which default to the checked-in US geo profile and `us-east-1`.
+- The live Strands agent is bounded to four turns, 1,200 output tokens, and
+  12,000 total tokens per request; the Bedrock client also uses bounded
+  connect/read timeouts and adaptive retries.
 - Live readiness fails closed while the case store is still process-local. The
   only escape hatch, `REENTRY_ALLOW_EPHEMERAL_STORE=true`, is an explicit
   local-testing opt-in and must not be used with claimant data or production
