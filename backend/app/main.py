@@ -84,8 +84,17 @@ MAX_CASE_EVIDENCE = 100
 # needed for the bounded human-review excerpt. Avoid decoding/regex-scanning a
 # 100 MB text upload when the UI will retain at most 280 characters.
 MAX_TEXT_EXCERPT_SOURCE_BYTES = 64 * 1024
+MAX_REQUEST_CHUNKS = 4096
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg"}
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
+
+
+class RequestBodyTooLargeError(Exception):
+    """Raised by the streaming receiver before a parser can overrun its cap."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
 
 
 def _request_limit_for_scope(scope: Scope) -> tuple[int, str] | None:
@@ -179,27 +188,25 @@ class RequestBodyLimitMiddleware:
             await _send_limit_error(scope, send, 413, limit[1])
             return
 
-        messages: list[dict[str, object]] = []
         received_bytes = 0
-        while True:
+        received_chunks = 0
+
+        async def limited_receive() -> dict[str, object]:
+            nonlocal received_bytes, received_chunks
             message = await receive()
-            messages.append(message)
             if message["type"] == "http.request":
+                received_chunks += 1
+                if received_chunks > MAX_REQUEST_CHUNKS:
+                    raise RequestBodyTooLargeError("Request contains too many body chunks")
                 received_bytes += len(message.get("body", b""))
                 if received_bytes > limit[0]:
-                    await _send_limit_error(scope, send, 413, limit[1])
-                    return
-                if not message.get("more_body", False):
-                    break
-            elif message["type"] == "http.disconnect":
-                break
+                    raise RequestBodyTooLargeError(limit[1])
+            return message
 
-        async def replay_receive() -> dict[str, object]:
-            if messages:
-                return messages.pop(0)
-            return {"type": "http.disconnect"}
-
-        await self.app(scope, replay_receive, send)
+        try:
+            await self.app(scope, limited_receive, send)
+        except RequestBodyTooLargeError as exc:
+            await _send_limit_error(scope, send, 413, exc.detail)
 
 
 @app.middleware("http")
@@ -221,6 +228,13 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
         type(exc).__name__,
     )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+@app.exception_handler(RequestBodyTooLargeError)
+async def handle_body_limit_error(request: Request, exc: RequestBodyTooLargeError) -> JSONResponse:
+    response = JSONResponse(status_code=413, content={"detail": exc.detail})
+    _set_security_headers(response, request.url.path)
+    return response
 
 
 def _default_case_id() -> str:

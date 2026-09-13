@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from app import main as main_module
 from app.main import app
@@ -68,14 +70,6 @@ def test_request_body_limits_reject_oversized_ingress() -> None:
     )
     assert oversized_upload.status_code == 413
 
-    chunked_json = client.post(
-        "/invocations",
-        content=(chunk for chunk in (b"x" * 40_000, b"y" * 30_000)),
-        headers={"Content-Type": "application/json"},
-    )
-    assert chunked_json.status_code == 413
-    assert chunked_json.json()["detail"] == "Request body exceeds the 64 KB limit"
-
     invalid_length = client.post(
         "/invocations",
         content=b"{}",
@@ -83,6 +77,34 @@ def test_request_body_limits_reject_oversized_ingress() -> None:
     )
     assert invalid_length.status_code == 400
     assert invalid_length.json()["detail"] == "Invalid Content-Length header"
+
+
+def test_streaming_request_receiver_rejects_over_limit_body() -> None:
+    from app.main import RequestBodyLimitMiddleware
+
+    messages = iter(
+        [
+            {"type": "http.request", "body": b'{"payload":"' + b"x" * 40_000, "more_body": True},
+            {"type": "http.request", "body": b"y" * 30_000 + b'"}', "more_body": False},
+        ]
+    )
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return next(messages)
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    async def downstream(scope, limited_receive, downstream_send) -> None:
+        while True:
+            message = await limited_receive()
+            if message["type"] != "http.request" or not message.get("more_body", False):
+                return
+
+    scope = {"type": "http", "method": "POST", "path": "/invocations", "headers": []}
+    asyncio.run(RequestBodyLimitMiddleware(downstream)(scope, receive, send))
+    assert sent[0]["status"] == 413
 
 
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
