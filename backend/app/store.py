@@ -48,6 +48,7 @@ class CaseStore:
                 case = self._cases[case_id]
                 working = case.model_copy(deep=True)
             updated = transition(working)
+            updated.revision = working.revision + 1
             with self._registry_lock:
                 self._cases[case_id] = updated.model_copy(deep=True)
                 return updated.model_copy(deep=True)
@@ -58,5 +59,7 @@ class CaseStore:
             if case_id != "case-042":
                 raise KeyError("case_not_found")
             with self._registry_lock:
-                self._cases[case_id] = clone_demo_case()
+                replacement = clone_demo_case()
+                replacement.revision = self._cases[case_id].revision + 1
+                self._cases[case_id] = replacement
                 return self._cases[case_id].model_copy(deep=True)

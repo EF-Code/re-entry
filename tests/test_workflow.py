@@ -446,15 +446,25 @@ def test_unexpected_errors_return_a_safe_message(monkeypatch: pytest.MonkeyPatch
 
 def test_approval_requires_the_gate_and_records_receipt() -> None:
     client.post("/api/cases/case-042/reset")
+    revision = client.get("/api/case").json()["revision"]
+    missing_revision = client.post(
+        "/api/cases/case-042/actions/act-02/approve",
+        json={"reviewer": "Demo reviewer", "note": "No version"},
+    )
+    assert missing_revision.status_code == 428
     blocked = client.post(
         "/api/cases/case-042/actions/act-03/approve",
-        json={"reviewer": "Demo reviewer", "note": "Try to skip the gate"},
+        json={"reviewer": "Demo reviewer", "note": "Try to skip the gate", "expected_revision": revision},
     )
     assert blocked.status_code == 409
 
     approved = client.post(
         "/api/cases/case-042/actions/act-02/approve",
-        json={"reviewer": "Maya's advocate", "note": "Address and notice checked."},
+        json={
+            "reviewer": "Maya's advocate",
+            "note": "Address and notice checked.",
+            "expected_revision": revision,
+        },
     )
     assert approved.status_code == 200
     action = next(a for a in approved.json()["actions"] if a["id"] == "act-02")
@@ -465,12 +475,12 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
 
     whitespace_reviewer = client.post(
         "/api/cases/case-042/actions/act-02/approve",
-        json={"reviewer": "   ", "note": "Nope"},
+        json={"reviewer": "   ", "note": "Nope", "expected_revision": revision + 1},
     )
     assert whitespace_reviewer.status_code == 422
     control_note = client.post(
         "/api/cases/case-042/actions/act-02/approve",
-        json={"reviewer": "Jo", "note": "bad\u0000note"},
+        json={"reviewer": "Jo", "note": "bad\u0000note", "expected_revision": revision + 1},
     )
     assert control_note.status_code == 422
 
@@ -482,13 +492,25 @@ def test_approval_note_is_single_line() -> None:
     assert request.note == "Checked address and deadline."
 
 
+def test_stale_approval_revision_is_rejected() -> None:
+    client.post("/api/cases/case-042/reset")
+    revision = client.get("/api/case").json()["revision"]
+    assert client.post("/api/cases/case-042/run").status_code == 200
+    stale = client.post(
+        "/api/cases/case-042/actions/act-02/approve",
+        json={"reviewer": "Demo reviewer", "note": "Stale view", "expected_revision": revision},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "Case changed; reload before approving"
+
+
 def test_store_apply_allows_only_one_concurrent_approval() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     local_store = CaseStore()
 
     def approve_transition(case):
-        return approve_action(case, "act-02", "Concurrent reviewer", "Checked")
+        return approve_action(case, "act-02", "Concurrent reviewer", "Checked", case.revision)
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = [executor.submit(local_store.apply, "case-042", approve_transition) for _ in range(8)]

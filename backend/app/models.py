@@ -139,6 +139,7 @@ class CaseState(BaseModel):
     next_deadline: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
     mode: str = Field(default="demo", min_length=1, max_length=40)
+    revision: int = Field(default=0, ge=0, le=100_000)
     run_count: int = Field(default=0, ge=0, le=100_000)
     evidence: list[Evidence] = Field(default_factory=list, max_length=100)
     actions: list[Action] = Field(default_factory=list, max_length=100)
@@ -148,6 +149,7 @@ class CaseState(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
+    expected_revision: int | None = Field(default=None, ge=0, le=100_000)
     reviewer: str = Field(default="Demo reviewer", min_length=2, max_length=80)
     note: str = Field(default="Approved after reviewing the cited evidence.", max_length=500)
 

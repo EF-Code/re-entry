@@ -472,12 +472,22 @@ def approve_case_action(case_id: str, action_id: str, request: ApprovalRequest) 
     try:
         return store.apply(
             case_id,
-            lambda case: approve_action(case, action_id, request.reviewer, request.note),
+            lambda case: approve_action(
+                case,
+                action_id,
+                request.reviewer,
+                request.note,
+                request.expected_revision,
+            ),
         )
     except KeyError as exc:
         detail = "Case not found" if exc.args and exc.args[0] == "case_not_found" else "Action not found"
         raise HTTPException(status_code=404, detail=detail) from exc
     except ValueError as exc:
+        if exc.args and exc.args[0] == "approval_revision_required":
+            raise HTTPException(status_code=428, detail="Approval must include the current case revision") from exc
+        if exc.args and exc.args[0] == "stale_case_revision":
+            raise HTTPException(status_code=409, detail="Case changed; reload before approving") from exc
         raise HTTPException(status_code=409, detail="Action is not waiting for approval") from exc
 
 

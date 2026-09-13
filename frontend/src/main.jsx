@@ -146,7 +146,7 @@ function App() {
       const response = await fetch(`/api/cases/${caseData.id}/actions/${approvalAction.id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reviewer, note }),
+        body: JSON.stringify({ reviewer, note, expected_revision: caseData.revision }),
       });
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));

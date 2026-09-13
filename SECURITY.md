@@ -34,7 +34,9 @@ government submissions, insurance claims, or financial actions.
   remain behind a deterministic `needs_approval` gate and record reviewer,
   note, citations, and outcome. Demo approvals mark caller-provided reviewer
   labels as `actor_trust=unverified_caller`; an authenticated principal is
-  still required before real deployment.
+  still required before real deployment. Approval requests also carry the
+  monotonic case revision the reviewer inspected; stale or missing revisions
+  are rejected.
 - Case transitions are serialized per case in the in-memory store, preventing
   concurrent requests from approving or recording the same action twice while
   keeping an unrelated case from waiting behind a slow planner call in this

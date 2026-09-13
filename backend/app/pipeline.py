@@ -145,9 +145,19 @@ def run_intake(case: CaseState) -> CaseState:
     return case
 
 
-def approve_action(case: CaseState, action_id: str, reviewer: str, note: str) -> CaseState:
+def approve_action(
+    case: CaseState,
+    action_id: str,
+    reviewer: str,
+    note: str,
+    expected_revision: int | None = None,
+) -> CaseState:
     """Approve exactly one high-stakes action, then call its mock connector."""
 
+    if expected_revision is None:
+        raise ValueError("approval_revision_required")
+    if expected_revision != case.revision:
+        raise ValueError("stale_case_revision")
     action = next((item for item in case.actions if item.id == action_id), None)
     if action is None:
         raise KeyError("action_not_found")
