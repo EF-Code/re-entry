@@ -163,7 +163,7 @@ def approve_action(case: CaseState, action_id: str, reviewer: str, note: str) ->
             title="Human approval recorded",
             detail=f"{action.title} was sent to {action.connector}.",
             tone=TimelineTone.positive,
-            source=reviewer,
+            source=f"{reviewer} · unverified label",
         )
     )
     case.audit.append(
@@ -171,6 +171,7 @@ def approve_action(case: CaseState, action_id: str, reviewer: str, note: str) ->
             id=_id("au", case.id, "approved", action.id, timestamp),
             at=timestamp,
             actor=reviewer,
+            actor_trust="unverified_caller",
             event_type="action.approved",
             detail=note.strip() or "Approved after reviewing the cited evidence.",
             citations=[citation.evidence_id for citation in action.citations],

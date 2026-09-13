@@ -47,7 +47,8 @@ flowchart LR
    official case, or contact a person remain `needs_approval`.
 5. A reviewer approves one prepared action. The mock connector returns a
    receipt, and the immutable-in-practice audit trail records reviewer, note,
-   citations, and outcome.
+   citations, outcome, and whether the actor is a trusted principal. The demo
+   explicitly marks its caller-provided reviewer label as unverified.
 6. A connector rejection is converted into evidence. The replanner adds a
    cited follow-up while preserving the same approval boundary.
 

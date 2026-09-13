@@ -101,6 +101,7 @@ class AuditEvent(BaseModel):
     id: str
     at: str
     actor: str
+    actor_trust: Literal["system", "unverified_caller", "authenticated_principal"] = "system"
     event_type: str
     detail: str
     citations: list[str] = Field(default_factory=list)

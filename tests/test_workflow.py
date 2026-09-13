@@ -411,6 +411,7 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
     assert action["status"] == "completed"
     assert "Mock receipt" in action["outcome"]
     assert approved.json()["audit"][-1]["event_type"] == "action.approved"
+    assert approved.json()["audit"][-1]["actor_trust"] == "unverified_caller"
 
     whitespace_reviewer = client.post(
         "/api/cases/case-042/actions/act-02/approve",
