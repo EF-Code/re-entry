@@ -324,6 +324,30 @@ def _default_case_id() -> str:
     return os.getenv("REENTRY_CASE_ID", "case-042").strip() or "case-042"
 
 
+def _runtime_mode() -> str:
+    return os.getenv("REENTRY_MODE", "demo").strip().lower() or "demo"
+
+
+def _ephemeral_store_is_explicitly_allowed() -> bool:
+    """Allow the in-memory store in live mode only for local synthetic tests."""
+
+    return os.getenv("REENTRY_ALLOW_EPHEMERAL_STORE", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _require_storage_ready() -> None:
+    """Fail closed until live mode has a durable storage implementation."""
+
+    if _runtime_mode() == "live" and not _ephemeral_store_is_explicitly_allowed():
+        raise HTTPException(
+            status_code=503,
+            detail="Live runtime is not ready: durable case storage is required",
+        )
+
+
 def _plan_limit_for_error() -> int:
     """Use the effective budget in a response without exposing bad config."""
 
@@ -336,19 +360,36 @@ def _plan_limit_for_error() -> int:
 def _require_demo_mode() -> None:
     """Keep synthetic reset/rejection controls out of a live runtime."""
 
-    if os.getenv("REENTRY_MODE", "demo").strip().lower() != "demo":
+    if _runtime_mode() != "demo":
         raise HTTPException(status_code=404, detail="Demo-only route unavailable")
 
 
 @app.get("/api/health")
 @app.get("/health", include_in_schema=False)
 @app.get("/ping", include_in_schema=False)
-def health() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "service": "re-entry",
-        "mode": os.getenv("REENTRY_MODE", "demo").strip().lower(),
-    }
+def health() -> JSONResponse:
+    mode = _runtime_mode()
+    if mode == "live" and not _ephemeral_store_is_explicitly_allowed():
+        response = JSONResponse(
+            status_code=503,
+            content={
+                "status": "not_ready",
+                "service": "re-entry",
+                "mode": mode,
+                "detail": "Durable case storage is required before live mode can serve traffic",
+            },
+        )
+        _set_security_headers(response, "/health")
+        return response
+    response = JSONResponse(
+        content={
+            "status": "ok",
+            "service": "re-entry",
+            "mode": mode,
+        }
+    )
+    _set_security_headers(response, "/health")
+    return response
 
 
 @app.get("/api/case", response_model=CaseState)
@@ -357,6 +398,7 @@ def get_default_case() -> CaseState:
 
 
 def _case_or_404(case_id: str) -> CaseState:
+    _require_storage_ready()
     try:
         return store.get(case_id)
     except KeyError as exc:
@@ -367,6 +409,7 @@ def _case_or_404(case_id: str) -> CaseState:
 def invoke_runtime(request: RuntimeInvocation) -> CaseState:
     """Expose a safe plan-only HTTP entrypoint for an AgentCore Runtime adapter."""
 
+    _require_storage_ready()
     case_id = request.case_id or _default_case_id()
     try:
         return store.apply(case_id, run_intake)

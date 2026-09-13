@@ -38,7 +38,9 @@ flowchart LR
    configured region/model allowlists, and excludes unreviewed evidence unless
    an operator explicitly opts in. The verified-only snapshot also projects
    action metadata and withholds case summaries, targets, and rationales that
-   are not required for planning.
+   are not required for planning. Live readiness fails closed until a durable
+   case store is configured; `REENTRY_ALLOW_EPHEMERAL_STORE=true` is reserved
+   for local synthetic-provider tests.
 3. Evidence citations and a trace step are attached to each plan pass. Source
    text is data, never an instruction, and cannot mutate the case by itself.
 4. The safety gate classifies risk. Actions that share an address, create an

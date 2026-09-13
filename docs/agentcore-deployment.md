@@ -19,6 +19,9 @@ model, a region/model allowlist, and connector policies have been provisioned.
 Live planning also requires an explicit decision about whether any
 `needs_review` evidence may leave the runtime; the safe default is to exclude
 it (`REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=false`).
+The runtime also refuses live traffic while `CaseStore` is process-local. Set
+`REENTRY_ALLOW_EPHEMERAL_STORE=true` only for a local, synthetic-data provider
+smoke test; never use that escape hatch for a deployment.
 
 ## Preflight
 

@@ -53,6 +53,21 @@ def test_demo_only_mutations_are_unavailable_in_live_mode(monkeypatch: pytest.Mo
     assert client.post("/api/cases/case-042/simulate-rejection").status_code == 404
 
 
+def test_live_mode_requires_durable_storage_or_explicit_local_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.delenv("REENTRY_ALLOW_EPHEMERAL_STORE", raising=False)
+
+    not_ready = client.get("/health")
+    assert not_ready.status_code == 503
+    assert not_ready.json()["status"] == "not_ready"
+    assert client.get("/api/case").status_code == 503
+
+    monkeypatch.setenv("REENTRY_ALLOW_EPHEMERAL_STORE", "true")
+    assert client.get("/health").status_code == 200
+
+
 def test_request_body_limits_reject_oversized_ingress() -> None:
     oversized_json = client.post(
         "/invocations",
@@ -180,6 +195,7 @@ def test_live_plan_budget_is_lower_and_cannot_be_refreshed_by_demo_reset(
 ) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.setenv("REENTRY_ALLOW_EPHEMERAL_STORE", "true")
     monkeypatch.setenv("REENTRY_MAX_LIVE_PLAN_RUNS", "1")
 
     first = client.post("/api/cases/case-042/run")
@@ -274,6 +290,7 @@ def test_strands_failures_keep_the_demo_safe(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
+    monkeypatch.setenv("REENTRY_ALLOW_EPHEMERAL_STORE", "true")
     monkeypatch.setenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", "true")
 
     def fail_live(_: object):
