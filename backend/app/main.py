@@ -107,6 +107,7 @@ MAX_CASE_EVIDENCE = 100
 # needed for the bounded human-review excerpt. Avoid decoding/regex-scanning a
 # 100 MB text upload when the UI will retain at most 280 characters.
 MAX_TEXT_EXCERPT_SOURCE_BYTES = 64 * 1024
+UPLOAD_READ_CHUNK_BYTES = 64 * 1024
 MAX_REQUEST_CHUNKS = 4096
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg"}
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
@@ -192,6 +193,39 @@ async def _send_limit_error(scope: Scope, send: Send, status_code: int, detail: 
 
 async def _empty_receive() -> dict[str, object]:
     return {"type": "http.disconnect"}
+
+
+async def _consume_upload(file: UploadFile, max_bytes: int) -> tuple[int, str, bytes]:
+    """Hash an upload incrementally and retain only the bounded text prefix.
+
+    Starlette's multipart parser may spool the part to a temporary file, but
+    reading the entire part into one ``bytes`` object here would still let a
+    valid, near-limit upload consume a large amount of application memory.
+    Reading one bounded chunk at a time keeps the route's working set stable
+    while the request middleware enforces the complete multipart envelope.
+    """
+
+    digest = hashlib.sha256()
+    excerpt = bytearray()
+    total = 0
+    while True:
+        # Read one extra byte once the cap is reached so an over-limit upload
+        # is rejected without retaining or hashing an unbounded body.
+        read_size = min(UPLOAD_READ_CHUNK_BYTES, max_bytes - total + 1)
+        chunk = await file.read(read_size)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Uploaded evidence exceeds the {MAX_UPLOAD_LABEL} limit",
+            )
+        digest.update(chunk)
+        remaining_excerpt = MAX_TEXT_EXCERPT_SOURCE_BYTES - len(excerpt)
+        if remaining_excerpt > 0:
+            excerpt.extend(chunk[:remaining_excerpt])
+    return total, digest.hexdigest(), bytes(excerpt)
 
 
 class RequestBodyLimitMiddleware:
@@ -406,17 +440,13 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
     ):
         raise HTTPException(status_code=415, detail="Use a PDF, text, CSV, PNG, or JPEG file with a safe filename")
     try:
-        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        total_size, full_hash, excerpt_source = await _consume_upload(file, MAX_UPLOAD_BYTES)
     finally:
         await file.close()
-    if not content:
+    if total_size == 0:
         raise HTTPException(status_code=400, detail="Uploaded evidence is empty")
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Uploaded evidence exceeds the {MAX_UPLOAD_LABEL} limit")
 
-    full_hash = hashlib.sha256(content).hexdigest()
     if extension in TEXT_EXTENSIONS:
-        excerpt_source = content[:MAX_TEXT_EXCERPT_SOURCE_BYTES]
         excerpt = re.sub(r"\s+", " ", excerpt_source.decode("utf-8", errors="replace")).strip()[:280]
     else:
         excerpt = "Binary evidence received; visual/OCR review is required before use."

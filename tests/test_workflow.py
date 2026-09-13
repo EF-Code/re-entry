@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 
 import pytest
 from app import main as main_module
@@ -6,6 +7,7 @@ from app.main import app
 from app.pipeline import approve_action
 from app.store import CaseStore
 from app.strands_agent import AgentPlan, _ground_plan
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -429,6 +431,49 @@ def test_upload_excerpt_scans_only_a_bounded_prefix() -> None:
     excerpt = uploaded.json()["evidence"]["excerpt"]
     assert excerpt.startswith("The first source is readable.")
     assert tail_marker.decode() not in excerpt
+
+
+def test_upload_consumer_hashes_incrementally_and_keeps_only_prefix() -> None:
+    from app.main import _consume_upload
+
+    class ChunkedUpload:
+        def __init__(self, content: bytes) -> None:
+            self.content = content
+            self.offset = 0
+            self.read_sizes: list[int] = []
+
+        async def read(self, size: int) -> bytes:
+            self.read_sizes.append(size)
+            chunk = self.content[self.offset : self.offset + size]
+            self.offset += len(chunk)
+            return chunk
+
+    content = b"prefix text" + b"x" * 100
+    upload = ChunkedUpload(content)
+    total, digest, excerpt_source = asyncio.run(_consume_upload(upload, max_bytes=len(content)))
+
+    assert total == len(content)
+    assert digest == hashlib.sha256(content).hexdigest()
+    assert excerpt_source == content
+    assert max(upload.read_sizes) <= main_module.UPLOAD_READ_CHUNK_BYTES
+
+
+def test_upload_consumer_rejects_over_limit_without_unbounded_read() -> None:
+    from app.main import _consume_upload
+
+    class ChunkedUpload:
+        def __init__(self) -> None:
+            self.read_sizes: list[int] = []
+
+        async def read(self, size: int) -> bytes:
+            self.read_sizes.append(size)
+            return b"123456" if len(self.read_sizes) == 1 else b""
+
+    upload = ChunkedUpload()
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(_consume_upload(upload, max_bytes=5))
+    assert getattr(error.value, "status_code", None) == 413
+    assert max(upload.read_sizes) <= main_module.UPLOAD_READ_CHUNK_BYTES
 
 
 def test_upload_rejects_format_controls_and_overlong_names() -> None:
