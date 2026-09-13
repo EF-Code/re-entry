@@ -36,6 +36,19 @@ def test_runtime_health_aliases_and_plan_invocation_contract() -> None:
     assert unsupported.status_code == 422
 
 
+def test_interactive_api_docs_are_disabled() -> None:
+    assert client.get("/docs").status_code == 404
+    assert client.get("/redoc").status_code == 404
+    assert client.get("/openapi.json").status_code == 404
+
+
+def test_demo_only_mutations_are_unavailable_in_live_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    client.post("/api/cases/case-042/reset")
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    assert client.post("/api/cases/case-042/reset").status_code == 404
+    assert client.post("/api/cases/case-042/simulate-rejection").status_code == 404
+
+
 def test_request_body_limits_reject_oversized_ingress() -> None:
     oversized_json = client.post(
         "/invocations",
@@ -303,6 +316,21 @@ def test_upload_hash_is_full_and_limit_is_configurable(monkeypatch: pytest.Monke
     accepted_evidence = accepted.json()["evidence"]
     assert len(accepted_evidence["content_hash"].removeprefix("sha256:")) == 64
     assert accepted_evidence["id"] == f"upload-{accepted_evidence['content_hash'].removeprefix('sha256:')}"
+
+
+def test_upload_excerpt_scans_only_a_bounded_prefix() -> None:
+    client.post("/api/cases/case-042/reset")
+    prefix = b"The first source is readable."
+    tail_marker = b"tail-marker-must-not-be-scanned"
+    content = prefix + b" " * (main_module.MAX_TEXT_EXCERPT_SOURCE_BYTES + 32) + tail_marker
+    uploaded = client.post(
+        "/api/cases/case-042/evidence",
+        files={"file": ("long.txt", content, "text/plain")},
+    )
+    assert uploaded.status_code == 200
+    excerpt = uploaded.json()["evidence"]["excerpt"]
+    assert excerpt.startswith("The first source is readable.")
+    assert tail_marker.decode() not in excerpt
 
 
 def test_upload_rejects_format_controls_and_overlong_names() -> None:

@@ -30,15 +30,22 @@ agentcore --version
 printf 'Docker Buildx: '
 docker buildx version | head -n 1
 printf 'AWS identity:\n'
+caller_account=$(aws sts get-caller-identity --query Account --output text)
+case "$caller_account" in
+  [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+  *) fail "AWS caller identity did not return a 12-digit account ID" ;;
+esac
 aws sts get-caller-identity --output json
+printf 'AWS caller account: %s\n' "$caller_account"
 
-"$python_bin" - "$config_file" "$targets_file" "$repo_root" <<'PY'
+"$python_bin" - "$config_file" "$targets_file" "$repo_root" "$caller_account" <<'PY'
 import json
 import pathlib
 import re
 import sys
 
-config_file, targets_file, repo_root = map(pathlib.Path, sys.argv[1:])
+config_file, targets_file, repo_root = map(pathlib.Path, sys.argv[1:4])
+caller_account = sys.argv[4]
 config = json.loads(config_file.read_text())
 targets = json.loads(targets_file.read_text())
 runtimes = config.get("runtimes", [])
@@ -71,6 +78,12 @@ for target in targets:
         raise SystemExit("ERROR: deployment targets must contain 12-digit AWS account IDs")
     if not re.fullmatch(r"[a-z0-9-]{1,32}", str(target.get("region", ""))):
         raise SystemExit("ERROR: each deployment target must contain a valid AWS region")
+target_accounts = sorted({str(target["account"]) for target in targets})
+if any(account != caller_account for account in target_accounts):
+    raise SystemExit(
+        "ERROR: AWS caller account "
+        f"{caller_account} does not match deployment target account(s): {', '.join(target_accounts)}"
+    )
 entrypoint = repo_root / runtime["entrypoint"]
 dockerfile = repo_root / runtime.get("dockerfile", "Dockerfile")
 if not entrypoint.is_file():

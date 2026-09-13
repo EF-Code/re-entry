@@ -30,7 +30,16 @@ from .pipeline import MAX_CASE_PLAN_RUNS, approve_action, run_intake, simulate_r
 from .store import CaseStore
 
 logger = logging.getLogger("re-entry")
-app = FastAPI(title="RE:ENTRY", version="0.2.0")
+# The browser uses the compiled UI rather than FastAPI's interactive schema.
+# Keep the unauthenticated demo surface small; production deployments should
+# expose API documentation separately behind their normal identity boundary.
+app = FastAPI(
+    title="RE:ENTRY",
+    version="0.2.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
@@ -71,6 +80,10 @@ MAX_UPLOAD_LABEL = _format_size(MAX_UPLOAD_BYTES)
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MAX_CASE_EVIDENCE = 100
+# An upload is hashed in full for deduplication, but only a small prefix is
+# needed for the bounded human-review excerpt. Avoid decoding/regex-scanning a
+# 100 MB text upload when the UI will retain at most 280 characters.
+MAX_TEXT_EXCERPT_SOURCE_BYTES = 64 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg"}
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
 
@@ -214,6 +227,13 @@ def _default_case_id() -> str:
     return os.getenv("REENTRY_CASE_ID", "case-042").strip() or "case-042"
 
 
+def _require_demo_mode() -> None:
+    """Keep synthetic reset/rejection controls out of a live runtime."""
+
+    if os.getenv("REENTRY_MODE", "demo").strip().lower() != "demo":
+        raise HTTPException(status_code=404, detail="Demo-only route unavailable")
+
+
 @app.get("/api/health")
 @app.get("/health", include_in_schema=False)
 @app.get("/ping", include_in_schema=False)
@@ -287,6 +307,7 @@ def approve_case_action(case_id: str, action_id: str, request: ApprovalRequest) 
 
 @app.post("/api/cases/{case_id}/simulate-rejection", response_model=CaseState)
 def reject_case_action(case_id: str) -> CaseState:
+    _require_demo_mode()
     _case_or_404(case_id)
     try:
         return store.apply(
@@ -304,6 +325,7 @@ def reject_case_action(case_id: str) -> CaseState:
 
 @app.post("/api/cases/{case_id}/reset", response_model=CaseState)
 def reset_case(case_id: str) -> CaseState:
+    _require_demo_mode()
     try:
         return store.reset(case_id)
     except KeyError as exc:
@@ -337,7 +359,8 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
 
     full_hash = hashlib.sha256(content).hexdigest()
     if extension in TEXT_EXTENSIONS:
-        excerpt = re.sub(r"\s+", " ", content.decode("utf-8", errors="replace")).strip()[:280]
+        excerpt_source = content[:MAX_TEXT_EXCERPT_SOURCE_BYTES]
+        excerpt = re.sub(r"\s+", " ", excerpt_source.decode("utf-8", errors="replace")).strip()[:280]
     else:
         excerpt = "Binary evidence received; visual/OCR review is required before use."
     evidence = Evidence(
