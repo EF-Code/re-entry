@@ -20,9 +20,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     REENTRY_MODE=demo \
     PORT=8080
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE requirements-runtime.lock ./
 COPY backend/ ./backend/
-RUN python -m pip install --no-cache-dir --default-timeout=120 .
+RUN python -m pip install --no-cache-dir --default-timeout=120 -r requirements-runtime.lock \
+    && python -m pip install --no-cache-dir --default-timeout=120 --no-deps .
 COPY --from=web-build /web/dist ./frontend/dist
 RUN groupadd --system reentry \
     && useradd --system --gid reentry --home-dir /app --no-create-home --shell /usr/sbin/nologin reentry \

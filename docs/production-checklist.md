@@ -19,7 +19,7 @@ claim that AWS infrastructure has been deployed.
 | Rate limiting | **partial locally** | Non-resettable live per-case plan budget, four-turn/12,000-token agent envelope, process-wide in-flight request/body/planner caps, and in-process per-case serialization; API Gateway/application per-user and per-tenant limits still required |
 | Observability | pending | X-Ray, CloudWatch retention, connector receipts and alerting |
 | Quality baseline | pending | Representative cases, refusal tests, prompt-injection tests, goal-success eval |
-| Python dependency integrity | **partial locally** | Direct requirements are exact-pinned and pip-audit is clean; generate a reviewed transitive lockfile with hashes, SBOM, and signature/provenance checks before release |
+| Python dependency integrity | **partial locally** | Runtime/CI transitive versions are exact-pinned and pip-audit is clean; add artifact hashes, SBOM, and signature/provenance checks before release |
 | Deployment | pending | AgentCore CLI/runtime config, ARM64 image, authorizer, and a verified public test URL |
 
 The local `agentcore` CLI is now installed at v0.29.0 and the repository includes

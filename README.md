@@ -24,7 +24,8 @@ remain a deliberate deployment slice; see [the deployment path](docs/agentcore-d
 Use the project Python environment at `~/.venv/` as the default:
 
 ```bash
-~/.venv/bin/pip install -e ".[dev]"
+~/.venv/bin/pip install -r requirements-dev.lock
+~/.venv/bin/pip install -e . --no-deps
 ~/.venv/bin/uvicorn app.main:app --app-dir backend --reload
 ```
 
@@ -67,11 +68,12 @@ The local Compose command follows the host architecture for fast development;
 the ARM64 command is the deployment preflight.
 
 The demo exercises a deterministic offline `strands.Agent` model. To enable the
-Bedrock-backed planner instead, configure AWS credentials and install the
-live extras:
+Bedrock-backed planner instead, configure AWS credentials. The runtime lock
+already contains the Strands and Boto3 dependencies:
 
 ```bash
-~/.venv/bin/pip install -e ".[live]"
+~/.venv/bin/pip install -r requirements-runtime.lock
+~/.venv/bin/pip install -e . --no-deps
 ```
 
 Never commit credentials. Copy `.env.example` to a local `.env` only after
