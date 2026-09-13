@@ -84,6 +84,42 @@ if any(account != caller_account for account in target_accounts):
         "ERROR: AWS caller account "
         f"{caller_account} does not match deployment target account(s): {', '.join(target_accounts)}"
     )
+env_vars = {
+    str(item.get("name", "")): str(item.get("value", ""))
+    for item in runtime.get("envVars", [])
+    if isinstance(item, dict)
+}
+runtime_mode = env_vars.get("REENTRY_MODE", "demo").strip().lower() or "demo"
+if runtime_mode not in {"demo", "live"}:
+    raise SystemExit(f"ERROR: unsupported REENTRY_MODE: {runtime_mode}")
+if runtime_mode == "live":
+    ephemeral_store = env_vars.get("REENTRY_ALLOW_EPHEMERAL_STORE", "false").strip().lower()
+    if ephemeral_store in {"1", "true", "yes"}:
+        raise SystemExit("ERROR: live deployment cannot allow the process-local ephemeral store")
+    try:
+        live_budget = int(env_vars.get("REENTRY_MAX_LIVE_PLAN_RUNS", "10"))
+    except ValueError as exc:
+        raise SystemExit("ERROR: REENTRY_MAX_LIVE_PLAN_RUNS must be an integer") from exc
+    if not 1 <= live_budget <= 100:
+        raise SystemExit("ERROR: REENTRY_MAX_LIVE_PLAN_RUNS must be between 1 and 100")
+    allowed_regions = {
+        value.strip()
+        for value in env_vars.get("REENTRY_ALLOWED_AWS_REGIONS", "").split(",")
+        if value.strip()
+    }
+    allowed_models = {
+        value.strip()
+        for value in env_vars.get("REENTRY_ALLOWED_MODEL_IDS", "").split(",")
+        if value.strip()
+    }
+    if not allowed_regions or not allowed_models:
+        raise SystemExit("ERROR: live deployment requires non-empty region/model allowlists")
+    target_regions = {str(target["region"]) for target in targets}
+    if not target_regions.issubset(allowed_regions):
+        raise SystemExit("ERROR: every deployment region must be in REENTRY_ALLOWED_AWS_REGIONS")
+    configured_model = env_vars.get("REENTRY_MODEL_ID", "").strip()
+    if not configured_model or configured_model not in allowed_models:
+        raise SystemExit("ERROR: REENTRY_MODEL_ID must be present in REENTRY_ALLOWED_MODEL_IDS")
 entrypoint = repo_root / runtime["entrypoint"]
 dockerfile = repo_root / runtime.get("dockerfile", "Dockerfile")
 if not entrypoint.is_file():

@@ -22,6 +22,7 @@ def test_agentcore_runtime_spec_is_authenticated_and_bounded() -> None:
     assert env_vars["REENTRY_LIVE_ALLOW_UNREVIEWED_DATA"] == "false"
     assert env_vars["REENTRY_ALLOWED_AWS_REGIONS"] == "us-east-1"
     assert env_vars["REENTRY_ALLOW_EPHEMERAL_STORE"] == "false"
+    assert int(env_vars["REENTRY_MAX_LIVE_PLAN_RUNS"]) in range(1, 101)
     assert all(
         not any(secret_word in env["name"].upper() for secret_word in ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
         for env in runtime.get("envVars", [])
