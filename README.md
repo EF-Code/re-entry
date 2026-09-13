@@ -74,3 +74,6 @@ minutes. The UI explicitly labels demo mode and does not contact real agencies.
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+For the prototype threat model and the remaining AWS launch work, see
+[SECURITY.md](SECURITY.md) and the [production checklist](docs/production-checklist.md).
