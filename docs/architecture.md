@@ -24,8 +24,10 @@ flowchart LR
 ## Request flow
 
 1. The case starts with synthetic county, lease, photo, insurer, estimate, and
-   utility evidence. Uploaded files are size-limited, filename-validated, and
-   quarantined as `needs_review`.
+   utility evidence. Uploaded files are bounded before multipart parsing,
+   size-limited, filename-validated, and quarantined as `needs_review`. The
+   demo also caps each case at 100 evidence records and 100 plan passes so
+   planner input and in-memory history remain bounded.
 2. The Strands-compatible coordinator builds a plan from the case snapshot.
    The demo adapter uses a deterministic `strands.Agent` + structured-output
    model with no network call. `REENTRY_MODE=live` swaps in

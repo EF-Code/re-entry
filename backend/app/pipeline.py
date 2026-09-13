@@ -21,6 +21,8 @@ from .models import (
 )
 from .strands_agent import plan_case
 
+MAX_CASE_PLAN_RUNS = 100
+
 
 def _now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -32,8 +34,10 @@ def _id(prefix: str, *parts: str) -> str:
 
 
 def run_intake(case: CaseState) -> CaseState:
-    """Run one idempotent plan pass and append a traceable audit event."""
+    """Run one repeatable plan pass and append a traceable audit event."""
 
+    if case.run_count >= MAX_CASE_PLAN_RUNS:
+        raise ValueError("plan_run_limit_reached")
     decision = plan_case(case)
     case.mode = decision.mode
     case.run_count += 1

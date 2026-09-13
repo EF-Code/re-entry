@@ -13,7 +13,7 @@ can be evaluated without external accounts or real personal data.
 ## Status
 
 The end-to-end demo slice is in place: case graph, evidence extraction,
-action queue, approval gate, connector rejection → replanning, upload
+action queue, approval gate, connector rejection → replanning, bounded upload
 quarantine, and a Strands/Bedrock live-mode adapter. Managed AgentCore Runtime,
 Gateway credentials, durable storage, and production auth remain a deliberate
 deployment slice; see [the architecture notes](docs/architecture.md).

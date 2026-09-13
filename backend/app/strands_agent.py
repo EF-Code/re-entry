@@ -217,10 +217,13 @@ def plan_case(case: CaseState) -> PlannerDecision:
         try:
             plan = _ground_plan(invoke_demo_strands(case), case)
             return PlannerDecision(mode="demo-strands", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - provider/SDK failures must fail closed
             # If a minimal install omitted the optional SDK, retain the same
             # safe deterministic behaviour rather than blocking the demo.
-            logger.exception("Offline Strands planner unavailable; using deterministic fallback")
+            logger.error(
+                "Offline Strands planner unavailable; using deterministic fallback error_type=%s",
+                type(exc).__name__,
+            )
             return PlannerDecision(
                 mode="demo",
                 summary=f"Deterministic fallback plan assembled from {len(case.evidence)} case sources.",
@@ -231,10 +234,13 @@ def plan_case(case: CaseState) -> PlannerDecision:
     try:
         plan = _ground_plan(invoke_strands(case), case)
         return PlannerDecision(mode="live", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - provider/SDK failures must fail closed
         # Never expose provider credentials, tracebacks, or model internals to
         # the caller. The deterministic plan is still auditable and safe.
-        logger.exception("Strands planner unavailable; using deterministic fallback")
+        logger.error(
+            "Strands planner unavailable; using deterministic fallback error_type=%s",
+            type(exc).__name__,
+        )
         return PlannerDecision(
             mode="demo-fallback",
             summary="Live planner was unavailable; a deterministic grounded plan was retained.",

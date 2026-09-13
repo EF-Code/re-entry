@@ -8,7 +8,7 @@ claim that AWS infrastructure has been deployed.
 | --- | --- | --- |
 | Strands orchestration | **done locally** | `strands.Agent` with deterministic offline model; Bedrock adapter behind `REENTRY_MODE=live` |
 | Human approval boundary | **done locally** | `needs_approval` actions cannot be approved by the planner and record citations/audit |
-| Untrusted document handling | **done locally** | Upload size, extension, path/control-character checks and quarantine tests |
+| Untrusted document handling | **done locally** | Bounded pre-parser, upload size, extension, path/control-character checks, per-case cap, and quarantine tests |
 | Safe provider failures | **done locally** | Live-mode exceptions fall back without exposing internals |
 | Authentication | pending | AgentCore IAM or CUSTOM_JWT; never `NONE` |
 | IAM scoping | pending | Exact Bedrock model ARN, ECR repository, and account-scoped trust policy |

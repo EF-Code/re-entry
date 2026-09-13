@@ -13,6 +13,8 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .models import (
     ApprovalRequest,
@@ -24,14 +26,15 @@ from .models import (
     RuntimeInvocation,
     UploadReceipt,
 )
-from .pipeline import approve_action, run_intake, simulate_rejection
+from .pipeline import MAX_CASE_PLAN_RUNS, approve_action, run_intake, simulate_rejection
 from .store import CaseStore
 
 logger = logging.getLogger("re-entry")
 app = FastAPI(title="RE:ENTRY", version="0.2.0")
+ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
@@ -65,32 +68,145 @@ def _format_size(value: int) -> str:
 
 MAX_UPLOAD_BYTES = _configured_upload_limit()
 MAX_UPLOAD_LABEL = _format_size(MAX_UPLOAD_BYTES)
+MAX_JSON_BODY_BYTES = 64 * 1024
+MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
+MAX_CASE_EVIDENCE = 100
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg"}
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
 
 
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    response = await call_next(request)
+def _request_limit_for_scope(scope: Scope) -> tuple[int, str] | None:
+    """Return a hard byte limit for request bodies that the app parses."""
+
+    if scope.get("method") not in {"POST", "PUT", "PATCH"}:
+        return None
+    path = scope.get("path", "")
+    if path.startswith("/api/cases/") and path.endswith("/evidence"):
+        return (
+            MAX_UPLOAD_BYTES + MAX_MULTIPART_OVERHEAD_BYTES,
+            f"Uploaded request exceeds the {MAX_UPLOAD_LABEL} limit",
+        )
+    if path == "/invocations" or path.startswith("/api/"):
+        return MAX_JSON_BODY_BYTES, "Request body exceeds the 64 KB limit"
+    return None
+
+
+def _content_length_value(headers: Headers) -> tuple[int | None, str | None]:
+    """Parse one strict, non-negative Content-Length value."""
+
+    values = headers.getlist("content-length")
+    if not values:
+        return None, None
+    if len(values) != 1:
+        return None, "Invalid Content-Length header"
+    value = values[0].strip()
+    if not value or any(character not in "0123456789" for character in value):
+        return None, "Invalid Content-Length header"
+    try:
+        return int(value), None
+    except ValueError:
+        return None, "Invalid Content-Length header"
+
+
+def _set_security_headers(response: JSONResponse, path: str) -> None:
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    if request.url.path.startswith(("/api/", "/health", "/ping", "/invocations")):
+    if path.startswith(("/api/", "/health", "/ping", "/invocations")):
         response.headers.setdefault("Cache-Control", "no-store")
-    if request.url.path == "/" or request.url.path.startswith("/assets/"):
+    if path == "/" or path.startswith("/assets/"):
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; script-src 'self'; style-src 'self'; "
             "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
             "frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
         )
+
+
+async def _send_limit_error(scope: Scope, send: Send, status_code: int, detail: str) -> None:
+    """Send a bounded-request error with the app's normal response headers."""
+
+    path = scope.get("path", "")
+    response = JSONResponse(status_code=status_code, content={"detail": detail})
+    _set_security_headers(response, path)
+    origin = Headers(scope=scope).get("origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    await response(scope, _empty_receive, send)
+
+
+async def _empty_receive() -> dict[str, object]:
+    return {"type": "http.disconnect"}
+
+
+class RequestBodyLimitMiddleware:
+    """Bound request bytes before Starlette parses JSON or multipart bodies."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        limit = _request_limit_for_scope(scope)
+        if scope.get("type") != "http" or limit is None:
+            await self.app(scope, receive, send)
+            return
+
+        headers = Headers(scope=scope)
+        is_upload = scope.get("path", "").startswith("/api/cases/") and scope.get("path", "").endswith("/evidence")
+        content_length, content_length_error = _content_length_value(headers)
+        if content_length_error:
+            await _send_limit_error(scope, send, 400, content_length_error)
+            return
+        if is_upload and content_length is None:
+            await _send_limit_error(scope, send, 411, "Content-Length is required for evidence uploads")
+            return
+        if content_length is not None and content_length > limit[0]:
+            await _send_limit_error(scope, send, 413, limit[1])
+            return
+
+        messages: list[dict[str, object]] = []
+        received_bytes = 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message["type"] == "http.request":
+                received_bytes += len(message.get("body", b""))
+                if received_bytes > limit[0]:
+                    await _send_limit_error(scope, send, 413, limit[1])
+                    return
+                if not message.get("more_body", False):
+                    break
+            elif message["type"] == "http.disconnect":
+                break
+
+        async def replay_receive() -> dict[str, object]:
+            if messages:
+                return messages.pop(0)
+            return {"type": "http.disconnect"}
+
+        await self.app(scope, replay_receive, send)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    _set_security_headers(response, request.url.path)
     return response
+
+
+app.add_middleware(RequestBodyLimitMiddleware)
 
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled application error method=%s path=%s", request.method, request.url.path)
+    logger.error(
+        "Unhandled application error method=%s path=%s error_type=%s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+    )
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
@@ -102,7 +218,11 @@ def _default_case_id() -> str:
 @app.get("/health", include_in_schema=False)
 @app.get("/ping", include_in_schema=False)
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "re-entry", "mode": os.getenv("REENTRY_MODE", "demo").lower()}
+    return {
+        "status": "ok",
+        "service": "re-entry",
+        "mode": os.getenv("REENTRY_MODE", "demo").strip().lower(),
+    }
 
 
 @app.get("/api/case", response_model=CaseState)
@@ -126,6 +246,10 @@ def invoke_runtime(request: RuntimeInvocation) -> CaseState:
         return store.apply(case_id, run_intake)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
+    except ValueError as exc:
+        if exc.args and exc.args[0] == "plan_run_limit_reached":
+            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({MAX_CASE_PLAN_RUNS})") from exc
+        raise
 
 
 @app.get("/api/cases/{case_id}", response_model=CaseState)
@@ -140,6 +264,10 @@ def run_case(case_id: str) -> CaseState:
         return store.apply(case_id, run_intake)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
+    except ValueError as exc:
+        if exc.args and exc.args[0] == "plan_run_limit_reached":
+            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({MAX_CASE_PLAN_RUNS})") from exc
+        raise
 
 
 @app.post("/api/cases/{case_id}/actions/{action_id}/approve", response_model=CaseState)
@@ -201,13 +329,12 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         raise HTTPException(status_code=413, detail=f"Uploaded evidence exceeds the {MAX_UPLOAD_LABEL} limit")
 
     full_hash = hashlib.sha256(content).hexdigest()
-    content_hash = full_hash[:16]
     if extension in TEXT_EXTENSIONS:
         excerpt = re.sub(r"\s+", " ", content.decode("utf-8", errors="replace")).strip()[:280]
     else:
         excerpt = "Binary evidence received; visual/OCR review is required before use."
     evidence = Evidence(
-        id=f"upload-{content_hash}",
+        id=f"upload-{full_hash}",
         title=safe_name,
         kind=EvidenceKind.upload,
         source="Local demo upload",
@@ -221,10 +348,12 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
     def add_evidence(case: CaseState) -> CaseState:
         if any(item.id == evidence.id for item in case.evidence):
             return case
+        if len(case.evidence) >= MAX_CASE_EVIDENCE:
+            raise ValueError("evidence_limit_reached")
         case.evidence.append(evidence)
         case.audit.append(
             AuditEvent(
-                id=f"au-upload-{content_hash}",
+                id=f"au-upload-{full_hash}",
                 at="Just now",
                 actor="Evidence intake",
                 event_type="evidence.uploaded",
@@ -239,6 +368,10 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         updated = store.apply(case_id, add_evidence)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
+    except ValueError as exc:
+        if exc.args and exc.args[0] == "evidence_limit_reached":
+            raise HTTPException(status_code=409, detail=f"Case evidence limit reached ({MAX_CASE_EVIDENCE})") from exc
+        raise
     stored_evidence = next(item for item in updated.evidence if item.id == evidence.id)
     return UploadReceipt(evidence=stored_evidence, message="Evidence quarantined for review; no action was sent.")
 

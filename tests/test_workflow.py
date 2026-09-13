@@ -36,6 +36,60 @@ def test_runtime_health_aliases_and_plan_invocation_contract() -> None:
     assert unsupported.status_code == 422
 
 
+def test_request_body_limits_reject_oversized_ingress() -> None:
+    oversized_json = client.post(
+        "/invocations",
+        content=b"x" * (main_module.MAX_JSON_BODY_BYTES + 1),
+        headers={"Content-Type": "application/json"},
+    )
+    assert oversized_json.status_code == 413
+    assert oversized_json.json()["detail"] == "Request body exceeds the 64 KB limit"
+
+    oversized_upload = client.post(
+        "/api/cases/case-042/evidence",
+        content=b"not parsed",
+        headers={
+            "Content-Type": "multipart/form-data; boundary=demo",
+            "Content-Length": str(main_module.MAX_UPLOAD_BYTES + main_module.MAX_MULTIPART_OVERHEAD_BYTES + 1),
+        },
+    )
+    assert oversized_upload.status_code == 413
+
+    chunked_json = client.post(
+        "/invocations",
+        content=(chunk for chunk in (b"x" * 40_000, b"y" * 30_000)),
+        headers={"Content-Type": "application/json"},
+    )
+    assert chunked_json.status_code == 413
+    assert chunked_json.json()["detail"] == "Request body exceeds the 64 KB limit"
+
+    invalid_length = client.post(
+        "/invocations",
+        content=b"{}",
+        headers={"Content-Type": "application/json", "Content-Length": "not-a-length"},
+    )
+    assert invalid_length.status_code == 400
+    assert invalid_length.json()["detail"] == "Invalid Content-Length header"
+
+
+def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    client.post("/api/cases/case-042/reset")
+    monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
+    capped_upload = client.post(
+        "/api/cases/case-042/evidence",
+        files={"file": ("extra.txt", b"one more source", "text/plain")},
+    )
+    assert capped_upload.status_code == 409
+    assert capped_upload.json()["detail"] == "Case evidence limit reached (6)"
+
+    import app.pipeline as pipeline_module
+
+    monkeypatch.setattr(pipeline_module, "MAX_CASE_PLAN_RUNS", 0)
+    capped_run = client.post("/api/cases/case-042/run")
+    assert capped_run.status_code == 429
+    assert capped_run.json()["detail"] == "Case plan run limit reached (100)"
+
+
 def test_case_has_grounded_evidence_and_approval_gate() -> None:
     response = client.get("/api/case")
     assert response.status_code == 200
@@ -242,7 +296,9 @@ def test_upload_hash_is_full_and_limit_is_configurable(monkeypatch: pytest.Monke
         files={"file": ("small.txt", b"1234", "text/plain")},
     )
     assert accepted.status_code == 200
-    assert len(accepted.json()["evidence"]["content_hash"].removeprefix("sha256:")) == 64
+    accepted_evidence = accepted.json()["evidence"]
+    assert len(accepted_evidence["content_hash"].removeprefix("sha256:")) == 64
+    assert accepted_evidence["id"] == f"upload-{accepted_evidence['content_hash'].removeprefix('sha256:')}"
 
 
 def test_upload_rejects_format_controls_and_overlong_names() -> None:

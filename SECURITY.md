@@ -6,9 +6,14 @@ government submissions, insurance claims, or financial actions.
 
 ## Current safeguards
 
-- Uploaded evidence is limited to 10 MB, rejects path traversal/control
-  characters and overlong names, records a full SHA-256 hash, allows only known
-  document/image extensions, and is quarantined as `needs_review`.
+- Uploaded evidence defaults to 10 MB (with a 100 MB configured hard ceiling),
+  rejects path traversal/control characters and overlong names, records a full
+  SHA-256 hash, allows only known document/image extensions, and is quarantined
+  as `needs_review`.
+- A bounded ASGI pre-reader rejects oversized or malformed `Content-Length`
+  values before JSON/multipart parsing, caps JSON requests at 64 KB, caps an
+  upload request at the configured file limit plus 1 MB multipart overhead, and
+  caps each demo case at 100 evidence records and 100 plan passes.
 - Document excerpts are treated as untrusted data in the Strands system prompt;
   they cannot become tools or instructions.
 - External actions are represented by local mock connectors. High-risk actions
