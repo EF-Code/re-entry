@@ -16,21 +16,32 @@ import os
 import warnings
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
-from strands.models.model import Model
-from strands.types.content import Messages
 
-from .models import CaseState
+try:
+    from strands.models.model import Model
+    from strands.types.content import Messages
+except ImportError:  # pragma: no cover - exercised only in minimal installs
+    class Model:  # type: ignore[no-redef]
+        """Tiny fallback base so demo mode can report a safe SDK fallback."""
+
+    Messages = Any  # type: ignore[assignment,misc]
+
+from .models import ActionStatus, CaseState
 
 logger = logging.getLogger(__name__)
 
 
 class AgentPlan(BaseModel):
-    summary: str = Field(max_length=600)
-    recommended_action_ids: list[str] = Field(default_factory=list, max_length=10)
-    warnings: list[str] = Field(default_factory=list, max_length=10)
+    summary: str = Field(min_length=1, max_length=600)
+    recommended_action_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(
+        default_factory=list, max_length=10
+    )
+    warnings: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(
+        default_factory=list, max_length=10
+    )
     confidence: float = Field(ge=0, le=1)
 
 
@@ -109,6 +120,25 @@ def _snapshot(case: CaseState) -> str:
     )
 
 
+def _ground_plan(plan: AgentPlan, case: CaseState) -> AgentPlan:
+    """Keep model recommendations bounded to known, approval-gated actions."""
+
+    allowed_ids = {
+        action.id
+        for action in case.actions
+        if action.requires_approval and action.status == ActionStatus.needs_approval
+    }
+    recommended_ids: list[str] = []
+    for action_id in plan.recommended_action_ids:
+        if action_id in allowed_ids and action_id not in recommended_ids:
+            recommended_ids.append(action_id)
+
+    warnings = list(plan.warnings)
+    if len(recommended_ids) != len(plan.recommended_action_ids):
+        warnings = (warnings + ["Planner recommendations were limited to known actions awaiting approval."])[:10]
+    return plan.model_copy(update={"recommended_action_ids": recommended_ids, "warnings": warnings})
+
+
 def invoke_demo_strands(case: CaseState) -> AgentPlan:
     """Exercise a real Strands Agent without requiring network credentials."""
 
@@ -141,6 +171,7 @@ def invoke_strands(case: CaseState) -> AgentPlan:
 
     # Keep optional imports out of module import time: demo mode should start
     # even when the Strands extras or AWS credentials are not installed.
+    from botocore.config import Config
     from strands import Agent, tool
     from strands.models import BedrockModel
 
@@ -150,11 +181,18 @@ def invoke_strands(case: CaseState) -> AgentPlan:
 
         return _snapshot(case)
 
-    region = os.getenv("AWS_REGION", "us-east-1")
-    model_id = os.getenv("REENTRY_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+    region = os.getenv("AWS_REGION", "us-east-1").strip() or "us-east-1"
+    model_id = os.getenv("REENTRY_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0").strip()
+    if not model_id or len(model_id) > 256:
+        raise ValueError("REENTRY_MODEL_ID must be a non-empty model identifier")
     model = BedrockModel(
         model_id=model_id,
         region_name=region,
+        boto_client_config=Config(
+            retries={"max_attempts": 5, "mode": "adaptive"},
+            connect_timeout=5,
+            read_timeout=90,
+        ),
         max_tokens=1200,
         temperature=0.1,
     )
@@ -168,7 +206,7 @@ def invoke_strands(case: CaseState) -> AgentPlan:
     )
     result = agent("Review the case snapshot, identify the safest next steps, and explain any conflict.")
     if result.structured_output is not None:
-        return result.structured_output
+        return AgentPlan.model_validate(result.structured_output)
     raise RuntimeError("Strands returned no structured plan")
 
 
@@ -177,7 +215,7 @@ def plan_case(case: CaseState) -> PlannerDecision:
 
     if os.getenv("REENTRY_MODE", "demo").strip().lower() != "live":
         try:
-            plan = invoke_demo_strands(case)
+            plan = _ground_plan(invoke_demo_strands(case), case)
             return PlannerDecision(mode="demo-strands", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
         except Exception:
             # If a minimal install omitted the optional SDK, retain the same
@@ -191,7 +229,7 @@ def plan_case(case: CaseState) -> PlannerDecision:
             )
 
     try:
-        plan = invoke_strands(case)
+        plan = _ground_plan(invoke_strands(case), case)
         return PlannerDecision(mode="live", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
     except Exception:
         # Never expose provider credentials, tracebacks, or model internals to

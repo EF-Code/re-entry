@@ -3,6 +3,7 @@ from app import main as main_module
 from app.main import app
 from app.pipeline import approve_action
 from app.store import CaseStore
+from app.strands_agent import AgentPlan, _ground_plan
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -103,6 +104,20 @@ def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.Monkey
     assert fallback.json()["mode"] == "demo-fallback"
     assert "provider credentials" not in fallback.text
     assert "Live planner was unavailable" in fallback.json()["audit"][-1]["detail"]
+
+
+def test_model_recommendations_are_grounded_before_use() -> None:
+    from app.demo_data import clone_demo_case
+
+    case = clone_demo_case()
+    plan = AgentPlan(
+        summary="Candidate actions",
+        recommended_action_ids=["act-02", "act-02", "act-03", "unknown-action"],
+        confidence=0.8,
+    )
+    grounded = _ground_plan(plan, case)
+    assert grounded.recommended_action_ids == ["act-02"]
+    assert grounded.warnings == ["Planner recommendations were limited to known actions awaiting approval."]
 
 
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
