@@ -38,11 +38,51 @@ def run_intake(case: CaseState) -> CaseState:
     case.mode = decision.mode
     case.run_count += 1
     case.confidence = decision.confidence
+    verified_count = sum(e.status == EvidenceStatus.verified for e in case.evidence)
+    review_count = sum(e.status == EvidenceStatus.needs_review for e in case.evidence)
+    conflict_count = sum(e.status == EvidenceStatus.conflict for e in case.evidence)
+    approval_count = sum(a.status == ActionStatus.needs_approval for a in case.actions)
     case.trace = [
-        TraceStep(id="tr-01", agent="Evidence Extractor", status="complete", detail="Normalised 6 sources · 5 verified, 1 needs review", evidence_count=len(case.evidence), duration_ms=412),
-        TraceStep(id="tr-02", agent="Requirements Planner", status="complete", detail="Found 4 obligations · 2 deadlines", evidence_count=4, action_count=4, duration_ms=286),
-        TraceStep(id="tr-03", agent="Drafting Verifier", status="warning", detail="Held 1 contradiction · no amount inferred", evidence_count=2, action_count=1, duration_ms=337),
-        TraceStep(id="tr-04", agent="Safety Gate", status="paused", detail="1 action waiting for human approval", action_count=sum(a.status == ActionStatus.needs_approval for a in case.actions), duration_ms=22),
+        TraceStep(
+            id="tr-01",
+            agent="Evidence Extractor",
+            status="complete",
+            detail=f"Normalised {len(case.evidence)} sources · {verified_count} verified, {review_count} needs review",
+            evidence_count=len(case.evidence),
+            duration_ms=412,
+        ),
+        TraceStep(
+            id="tr-02",
+            agent="Requirements Planner",
+            status="complete",
+            detail=f"Mapped {len(case.actions)} recovery actions from the case obligations",
+            evidence_count=len(case.evidence),
+            action_count=len(case.actions),
+            duration_ms=286,
+        ),
+        TraceStep(
+            id="tr-03",
+            agent="Drafting Verifier",
+            status="warning" if conflict_count else "complete",
+            detail=(
+                f"Held {conflict_count} contradiction{'s' if conflict_count != 1 else ''} · no amount inferred"
+                if conflict_count
+                else "No unresolved evidence contradictions found"
+            ),
+            evidence_count=conflict_count,
+            action_count=1 if conflict_count else 0,
+            duration_ms=337,
+        ),
+        TraceStep(
+            id="tr-04",
+            agent="Safety Gate",
+            status="paused" if approval_count else "complete",
+            detail=f"{approval_count} action{'s' if approval_count != 1 else ''} waiting for human approval"
+            if approval_count
+            else "No action is waiting for human approval",
+            action_count=approval_count,
+            duration_ms=22,
+        ),
     ]
     timestamp = _now()
     case.timeline.append(

@@ -53,6 +53,39 @@ def test_run_is_repeatable_and_auditable() -> None:
     assert second["trace"][0]["agent"] == "Evidence Extractor"
 
 
+def test_trace_counts_follow_case_mutations() -> None:
+    client.post("/api/cases/case-042/reset")
+    uploaded = client.post(
+        "/api/cases/case-042/evidence",
+        files={"file": ("receipt.txt", b"A temporary hotel receipt.", "text/plain")},
+    )
+    assert uploaded.status_code == 200
+    after_upload = client.post("/api/cases/case-042/run").json()
+    assert after_upload["trace"][0]["detail"].startswith("Normalised 7 sources")
+    assert after_upload["trace"][0]["evidence_count"] == 7
+
+    rejected = client.post("/api/cases/case-042/simulate-rejection")
+    assert rejected.status_code == 200
+    after_rejection = client.post("/api/cases/case-042/run").json()
+    assert after_rejection["trace"][0]["detail"].startswith("Normalised 8 sources")
+    assert after_rejection["trace"][3]["action_count"] == 2
+
+
+def test_strands_failures_keep_the_demo_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    client.post("/api/cases/case-042/reset")
+
+    def fail_demo(_: object):
+        raise RuntimeError("simulated SDK incompatibility")
+
+    import app.strands_agent as strands_module
+
+    monkeypatch.setattr(strands_module, "invoke_demo_strands", fail_demo)
+    fallback = client.post("/api/cases/case-042/run")
+    assert fallback.status_code == 200
+    assert fallback.json()["mode"] == "demo"
+    assert "6 case sources" in fallback.json()["audit"][-1]["detail"]
+
+
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_CASE_ID", "does-not-exist")
     response = client.get("/api/case")

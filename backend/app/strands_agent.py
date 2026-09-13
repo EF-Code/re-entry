@@ -175,16 +175,17 @@ def invoke_strands(case: CaseState) -> AgentPlan:
 def plan_case(case: CaseState) -> PlannerDecision:
     """Use live Strands only when explicitly enabled, with a safe fallback."""
 
-    if os.getenv("REENTRY_MODE", "demo").lower() != "live":
+    if os.getenv("REENTRY_MODE", "demo").strip().lower() != "live":
         try:
             plan = invoke_demo_strands(case)
             return PlannerDecision(mode="demo-strands", summary=plan.summary, warnings=plan.warnings, confidence=plan.confidence)
-        except (ImportError, RuntimeError, TypeError, ValueError):
+        except Exception:
             # If a minimal install omitted the optional SDK, retain the same
             # safe deterministic behaviour rather than blocking the demo.
+            logger.exception("Offline Strands planner unavailable; using deterministic fallback")
             return PlannerDecision(
                 mode="demo",
-                summary="Deterministic fallback plan assembled from six synthetic sources.",
+                summary=f"Deterministic fallback plan assembled from {len(case.evidence)} case sources.",
                 warnings=["Strands SDK unavailable; no external action was attempted."],
                 confidence=case.confidence,
             )
