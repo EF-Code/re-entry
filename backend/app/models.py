@@ -113,6 +113,7 @@ class AuditEvent(BaseModel):
     at: str = Field(min_length=1, max_length=80)
     actor: str = Field(min_length=1, max_length=160)
     actor_trust: Literal["system", "unverified_caller", "authenticated_principal"] = "system"
+    inspected_revision: int | None = Field(default=None, ge=0, le=MAX_CASE_REVISION)
     event_type: str = Field(min_length=1, max_length=80)
     detail: str = Field(min_length=1, max_length=600)
     citations: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(

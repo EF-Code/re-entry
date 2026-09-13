@@ -553,6 +553,7 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
     assert "Mock receipt" in action["outcome"]
     assert approved.json()["audit"][-1]["event_type"] == "action.approved"
     assert approved.json()["audit"][-1]["actor_trust"] == "unverified_caller"
+    assert approved.json()["audit"][-1]["inspected_revision"] == revision
 
     whitespace_reviewer = client.post(
         "/api/cases/case-042/actions/act-02/approve",
@@ -614,12 +615,17 @@ def test_store_rejects_revision_overflow_without_committing() -> None:
     case.revision = MAX_CASE_REVISION
     local_store.put(case)
 
+    transition_called = False
+
     def change_summary(working):
+        nonlocal transition_called
+        transition_called = True
         working.summary = "Changed at the revision boundary."
         return working
 
     with pytest.raises(ValueError, match="case_revision_limit_reached"):
         local_store.apply("case-042", change_summary)
+    assert transition_called is False
     assert local_store.get("case-042").revision == MAX_CASE_REVISION
 
 

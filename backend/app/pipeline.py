@@ -184,6 +184,7 @@ def approve_action(
             at=timestamp,
             actor=reviewer,
             actor_trust="unverified_caller",
+            inspected_revision=case.revision,
             event_type="action.approved",
             detail=note.strip() or "Approved after reviewing the cited evidence.",
             citations=[citation.evidence_id for citation in action.citations],

@@ -47,6 +47,12 @@ class CaseStore:
             with self._registry_lock:
                 case = self._cases[case_id]
                 working = case.model_copy(deep=True)
+            if working.revision >= MAX_CASE_REVISION:
+                # Refuse before invoking the transition. A future transition
+                # may perform provider or connector work, so checking after
+                # it runs could create an external side effect without a
+                # representable committed revision.
+                raise ValueError("case_revision_limit_reached")
             before = working.model_copy(deep=True)
             updated = transition(working)
             # Idempotent transitions (for example a duplicate upload or a
@@ -55,8 +61,6 @@ class CaseStore:
             # state before advancing the optimistic-concurrency token.
             if updated == before:
                 return updated.model_copy(deep=True)
-            if working.revision >= MAX_CASE_REVISION:
-                raise ValueError("case_revision_limit_reached")
             updated.revision = working.revision + 1
             with self._registry_lock:
                 self._cases[case_id] = updated.model_copy(deep=True)

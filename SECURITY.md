@@ -36,7 +36,7 @@ government submissions, insurance claims, or financial actions.
   traffic.
 - External actions are represented by local mock connectors. High-risk actions
   remain behind a deterministic `needs_approval` gate and record reviewer,
-  note, citations, and outcome. Demo approvals mark caller-provided reviewer
+  note, citations, inspected case revision, and outcome. Demo approvals mark caller-provided reviewer
   labels as `actor_trust=unverified_caller`; an authenticated principal is
   still required before real deployment. Approval requests also carry the
   monotonic case revision the reviewer inspected; stale or missing revisions
