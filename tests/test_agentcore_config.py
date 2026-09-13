@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -40,7 +41,15 @@ def test_agentcore_target_example_is_safe_placeholder() -> None:
     assert len(targets) == 1
     assert targets[0]["account"] == "123456789012"
     assert targets[0]["region"] == "us-east-1"
-    assert json.loads((ROOT / "agentcore/aws-targets.json").read_text()) == []
+    # Account-specific targets are local deployment state. Keep only the safe
+    # example in the repository so a real account id cannot be committed by
+    # editing a tracked placeholder.
+    assert "agentcore/aws-targets.json" not in subprocess.check_output(
+        ["git", "ls-files"], cwd=ROOT, text=True
+    ).splitlines()
+    local_targets = ROOT / "agentcore/aws-targets.json"
+    if local_targets.exists():
+        assert json.loads(local_targets.read_text()) == []
 
 
 def test_dockerignore_excludes_local_runtime_and_deployment_state() -> None:
