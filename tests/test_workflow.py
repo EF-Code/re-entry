@@ -253,10 +253,10 @@ def test_plan_slot_is_released_when_transition_fails(monkeypatch: pytest.MonkeyP
     slot = BoundedSemaphore(1)
     monkeypatch.setattr(main_module, "_plan_slots", slot)
 
-    def fail_apply(_: str, __) -> object:
+    def fail_transition(_) -> object:
         raise RuntimeError("planner transition failed")
 
-    monkeypatch.setattr(main_module.store, "apply", fail_apply)
+    monkeypatch.setattr(main_module, "run_intake", fail_transition)
     with pytest.raises(RuntimeError, match="transition failed"):
         main_module._apply_plan("case-042")
 

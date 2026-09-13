@@ -55,3 +55,10 @@ def test_dockerignore_excludes_local_runtime_and_deployment_state() -> None:
         "agentcore/.cli/",
     ):
         assert required in dockerignore
+
+
+def test_agentcore_preflight_probes_each_target_region() -> None:
+    script = (ROOT / "scripts/agentcore-preflight.sh").read_text()
+    assert 'for region in sorted({str(target["region"]) for target in targets})' in script
+    assert 'targets[0]["region"]' not in script
+    assert '"$target_region"' in script

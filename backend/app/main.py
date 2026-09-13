@@ -222,16 +222,26 @@ def _release_request(body_bytes: int) -> None:
 
 
 def _apply_plan(case_id: str) -> CaseState:
-    """Run one plan transition only when a process-wide slot is available."""
+    """Run one plan transition only when a process-wide slot is available.
 
-    if not _plan_slots.acquire(blocking=False):
-        raise HTTPException(status_code=429, detail="Planner capacity exhausted")
-    try:
-        return store.apply(case_id, run_intake)
-    finally:
-        # Always release the slot, including provider failures and validation
-        # errors, so one bad request cannot permanently reduce capacity.
-        _plan_slots.release()
+    Acquire the planner slot *inside* the per-case store transition.  This
+    keeps callers waiting on the same case lock from reserving every global
+    slot while they are not doing planner work, so unrelated cases retain
+    capacity.
+    """
+
+    def bounded_transition(case: CaseState) -> CaseState:
+        if not _plan_slots.acquire(blocking=False):
+            raise HTTPException(status_code=429, detail="Planner capacity exhausted")
+        try:
+            return run_intake(case)
+        finally:
+            # Always release the slot, including provider failures and
+            # validation errors, so one bad request cannot permanently reduce
+            # capacity.
+            _plan_slots.release()
+
+    return store.apply(case_id, bounded_transition)
 
 
 def _request_limit_for_scope(scope: Scope) -> tuple[int, str] | None:

@@ -134,7 +134,7 @@ print(f"Config OK: {runtime['name']} ({runtime['authorizerType']}, {runtime['pro
 print(f"Target region(s): {', '.join(item['region'] for item in targets)}")
 PY
 
-read -r target_region runtime_mode model_id < <(
+read -r runtime_mode model_id < <(
   "$python_bin" - "$config_file" "$targets_file" <<'PY'
 import json
 import pathlib
@@ -147,28 +147,41 @@ env_vars = {item["name"]: item["value"] for item in runtime.get("envVars", [])}
 mode = str(env_vars.get("REENTRY_MODE", "demo")).strip().lower() or "demo"
 if mode not in {"demo", "live"}:
     raise SystemExit(f"ERROR: unsupported REENTRY_MODE: {mode}")
-print(targets[0]["region"], mode, str(env_vars.get("REENTRY_MODEL_ID", "")).strip())
+print(mode, str(env_vars.get("REENTRY_MODEL_ID", "")).strip())
 PY
 )
 if [ "$runtime_mode" = "live" ]; then
   [ -n "$model_id" ] || fail "live mode requires REENTRY_MODEL_ID in agentcore.json"
-  case "$model_id" in
-    global.*|us.*|eu.*|apac.*|au.*|jp.*)
-      aws bedrock get-inference-profile \
-        --region "$target_region" \
-        --inference-profile-identifier "$model_id" \
-        --output json >/dev/null \
-        || fail "Bedrock inference profile is not accessible: $model_id"
-      ;;
-    *)
-      aws bedrock get-foundation-model \
-        --region "$target_region" \
-        --model-identifier "$model_id" \
-        --output json >/dev/null \
-        || fail "Bedrock foundation model is not accessible: $model_id"
-      ;;
-  esac
-  printf 'Bedrock model access verified: %s (%s)\n' "$model_id" "$target_region"
+  while IFS= read -r target_region; do
+    [ -n "$target_region" ] || continue
+    case "$model_id" in
+      global.*|us.*|eu.*|apac.*|au.*|jp.*)
+        aws bedrock get-inference-profile \
+          --region "$target_region" \
+          --inference-profile-identifier "$model_id" \
+          --output json >/dev/null \
+          || fail "Bedrock inference profile is not accessible: $model_id ($target_region)"
+        ;;
+      *)
+        aws bedrock get-foundation-model \
+          --region "$target_region" \
+          --model-identifier "$model_id" \
+          --output json >/dev/null \
+          || fail "Bedrock foundation model is not accessible: $model_id ($target_region)"
+        ;;
+    esac
+    printf 'Bedrock model access verified: %s (%s)\n' "$model_id" "$target_region"
+  done < <(
+    "$python_bin" - "$targets_file" <<'PY'
+import json
+import pathlib
+import sys
+
+targets = json.loads(pathlib.Path(sys.argv[1]).read_text())
+for region in sorted({str(target["region"]) for target in targets}):
+    print(region)
+PY
+  )
 fi
 
 docker buildx build --platform linux/arm64 --check "$repo_root"
