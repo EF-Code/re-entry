@@ -9,6 +9,9 @@ BYO-container HTTP runtime:
 - Inbound authorization is `AWS_IAM`; there is no unauthenticated production
   configuration.
 - OTel is enabled and short request/reply session lifetimes are explicit.
+- Non-secret live policy variables are checked into the spec: verified-only
+  provider data, explicit US region/model allowlists, a 10-pass live budget,
+  and the ephemeral-store guard set to false.
 - The local runtime disables interactive docs/OpenAPI, rejects slow or
   over-limit request bodies before parsing, and keeps demo reset/rejection
   routes unavailable when `REENTRY_MODE=live`.

@@ -35,6 +35,26 @@
         {
           "name": "REENTRY_CASE_ID",
           "value": "case-042"
+        },
+        {
+          "name": "REENTRY_MAX_LIVE_PLAN_RUNS",
+          "value": "10"
+        },
+        {
+          "name": "REENTRY_LIVE_ALLOW_UNREVIEWED_DATA",
+          "value": "false"
+        },
+        {
+          "name": "REENTRY_ALLOWED_AWS_REGIONS",
+          "value": "us-east-1"
+        },
+        {
+          "name": "REENTRY_ALLOWED_MODEL_IDS",
+          "value": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        },
+        {
+          "name": "REENTRY_ALLOW_EPHEMERAL_STORE",
+          "value": "false"
         }
       ]
     }
