@@ -16,7 +16,7 @@ claim that AWS infrastructure has been deployed.
 | IAM scoping | pending | Exact Bedrock model ARN, ECR repository, and account-scoped trust policy |
 | Outbound credentials | pending | AgentCore Gateway targets / credential providers; no secrets in runtime env |
 | Durable data | **guarded locally** | Live readiness rejects the process-local store by default; encrypted S3 objects, DynamoDB case graph, retention and deletion policy still required |
-| Rate limiting | **partial locally** | Non-resettable live per-case plan budget, four-turn/12,000-token agent envelope, and in-process per-case serialization; API Gateway/application per-user and per-tenant limits still required |
+| Rate limiting | **partial locally** | Non-resettable live per-case plan budget, four-turn/12,000-token agent envelope, process-wide in-flight request/body caps, and in-process per-case serialization; API Gateway/application per-user and per-tenant limits still required |
 | Observability | pending | X-Ray, CloudWatch retention, connector receipts and alerting |
 | Quality baseline | pending | Representative cases, refusal tests, prompt-injection tests, goal-success eval |
 | Deployment | pending | AgentCore CLI/runtime config, ARM64 image, authorizer, and a verified public test URL |

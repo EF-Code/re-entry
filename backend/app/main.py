@@ -10,6 +10,7 @@ import re
 import time
 import unicodedata
 from pathlib import PurePath
+from threading import Lock
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,6 +65,10 @@ DEFAULT_REQUEST_READ_TIMEOUT_SECONDS = 30
 MAX_CONFIGURED_REQUEST_READ_TIMEOUT_SECONDS = 300
 DEFAULT_REQUEST_MAX_DURATION_SECONDS = 300
 MAX_CONFIGURED_REQUEST_MAX_DURATION_SECONDS = 3_600
+DEFAULT_MAX_IN_FLIGHT_REQUESTS = 32
+MAX_CONFIGURED_MAX_IN_FLIGHT_REQUESTS = 256
+DEFAULT_MAX_IN_FLIGHT_BODY_BYTES = 256 * 1024 * 1024
+MAX_CONFIGURED_MAX_IN_FLIGHT_BODY_BYTES = 1 * 1024 * 1024 * 1024
 
 
 def _configured_upload_limit() -> int:
@@ -122,6 +127,17 @@ def _configured_request_max_duration() -> float:
     return value
 
 
+def _configured_positive_limit(name: str, default: int, maximum: int) -> int:
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a positive integer") from exc
+    if not 1 <= value <= maximum:
+        raise RuntimeError(f"{name} must be between 1 and {maximum}")
+    return value
+
+
 def _format_size(value: int) -> str:
     if value % (1024 * 1024) == 0:
         return f"{value // (1024 * 1024)} MB"
@@ -134,6 +150,16 @@ MAX_UPLOAD_BYTES = _configured_upload_limit()
 MAX_UPLOAD_LABEL = _format_size(MAX_UPLOAD_BYTES)
 REQUEST_READ_TIMEOUT_SECONDS = _configured_request_read_timeout()
 REQUEST_MAX_DURATION_SECONDS = _configured_request_max_duration()
+MAX_IN_FLIGHT_REQUESTS = _configured_positive_limit(
+    "REENTRY_MAX_IN_FLIGHT_REQUESTS",
+    DEFAULT_MAX_IN_FLIGHT_REQUESTS,
+    MAX_CONFIGURED_MAX_IN_FLIGHT_REQUESTS,
+)
+MAX_IN_FLIGHT_BODY_BYTES = _configured_positive_limit(
+    "REENTRY_MAX_IN_FLIGHT_BODY_BYTES",
+    DEFAULT_MAX_IN_FLIGHT_BODY_BYTES,
+    MAX_CONFIGURED_MAX_IN_FLIGHT_BODY_BYTES,
+)
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MAX_CASE_EVIDENCE = 100
@@ -161,6 +187,30 @@ class RequestBodyReadTimeoutError(Exception):
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
         self.detail = detail
+
+
+_in_flight_lock = Lock()
+_in_flight_requests = 0
+_in_flight_body_bytes = 0
+
+
+def _try_reserve_request(body_bytes: int) -> bool:
+    global _in_flight_body_bytes, _in_flight_requests
+    with _in_flight_lock:
+        if _in_flight_requests >= MAX_IN_FLIGHT_REQUESTS:
+            return False
+        if _in_flight_body_bytes + body_bytes > MAX_IN_FLIGHT_BODY_BYTES:
+            return False
+        _in_flight_requests += 1
+        _in_flight_body_bytes += body_bytes
+        return True
+
+
+def _release_request(body_bytes: int) -> None:
+    global _in_flight_body_bytes, _in_flight_requests
+    with _in_flight_lock:
+        _in_flight_requests = max(0, _in_flight_requests - 1)
+        _in_flight_body_bytes = max(0, _in_flight_body_bytes - body_bytes)
 
 
 def _request_limit_for_scope(scope: Scope) -> tuple[int, str] | None:
@@ -298,6 +348,11 @@ class RequestBodyLimitMiddleware:
             await _send_limit_error(scope, send, 413, limit[1])
             return
 
+        reserved_body_bytes = content_length if content_length is not None else limit[0]
+        if not _try_reserve_request(reserved_body_bytes):
+            await _send_limit_error(scope, send, 429, "Too many requests in flight")
+            return
+
         received_bytes = 0
         received_chunks = 0
         deadline = time.monotonic() + REQUEST_MAX_DURATION_SECONDS
@@ -330,6 +385,8 @@ class RequestBodyLimitMiddleware:
             await _send_limit_error(scope, send, 413, exc.detail)
         except RequestBodyReadTimeoutError as exc:
             await _send_limit_error(scope, send, 408, exc.detail)
+        finally:
+            _release_request(reserved_body_bytes)
 
 
 @app.middleware("http")

@@ -180,6 +180,32 @@ def test_streaming_request_receiver_enforces_absolute_deadline(monkeypatch: pyte
     assert sent[0]["status"] == 408
 
 
+def test_streaming_request_receiver_rejects_aggregate_inflight_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import RequestBodyLimitMiddleware
+
+    with main_module._in_flight_lock:
+        monkeypatch.setattr(main_module, "_in_flight_requests", main_module.MAX_IN_FLIGHT_REQUESTS)
+        monkeypatch.setattr(main_module, "_in_flight_body_bytes", 0)
+
+    downstream_called = False
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    async def downstream(scope, limited_receive, downstream_send) -> None:
+        nonlocal downstream_called
+        downstream_called = True
+
+    scope = {"type": "http", "method": "POST", "path": "/invocations", "headers": []}
+    asyncio.run(RequestBodyLimitMiddleware(downstream)(scope, receive, send))
+    assert sent[0]["status"] == 429
+    assert downstream_called is False
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
@@ -800,3 +826,7 @@ def test_upload_limit_configuration_rejects_invalid_values(monkeypatch: pytest.M
     monkeypatch.setattr(main_module, "REQUEST_READ_TIMEOUT_SECONDS", 30)
     with pytest.raises(RuntimeError, match="at least"):
         main_module._configured_request_max_duration()
+
+    monkeypatch.setenv("REENTRY_MAX_IN_FLIGHT_REQUESTS", "0")
+    with pytest.raises(RuntimeError, match="between 1"):
+        main_module._configured_positive_limit("REENTRY_MAX_IN_FLIGHT_REQUESTS", 32, 256)

@@ -45,6 +45,14 @@
           "value": "300"
         },
         {
+          "name": "REENTRY_MAX_IN_FLIGHT_REQUESTS",
+          "value": "32"
+        },
+        {
+          "name": "REENTRY_MAX_IN_FLIGHT_BODY_BYTES",
+          "value": "268435456"
+        },
+        {
           "name": "REENTRY_LIVE_ALLOW_UNREVIEWED_DATA",
           "value": "false"
         },

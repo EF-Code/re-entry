@@ -17,7 +17,8 @@ government submissions, insurance claims, or financial actions.
   chunks, and applies both an absolute request deadline and a per-chunk read
   deadline. Upload hashing is incremental
   and retains only a bounded, control-character-sanitized excerpt prefix. Each
-  demo case is also capped at 100 evidence records and 100 plan passes; live mode defaults to a separate,
+  process also caps body-bearing requests and reserved in-flight body bytes;
+  each demo case is also capped at 100 evidence records and 100 plan passes; live mode defaults to a separate,
   non-resettable 10-pass budget (`REENTRY_MAX_LIVE_PLAN_RUNS`, bounded to 100).
 - Document excerpts are treated as untrusted data in the Strands system prompt;
   they cannot become tools or instructions. Live planning does not send
