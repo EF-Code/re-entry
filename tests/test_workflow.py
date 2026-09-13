@@ -239,6 +239,8 @@ def test_live_snapshot_redacts_unreviewed_excerpts() -> None:
 
     snapshot = _snapshot(clone_demo_case(), include_unreviewed=False)
     assert "Harbor Mutual asks for a signed contents inventory" not in snapshot
+    assert "$460 discrepancy is visible" not in snapshot
+    assert '"redacted": true' in snapshot
     assert '"review_queue"' in snapshot
     assert '"id": "ev-04"' in snapshot
 

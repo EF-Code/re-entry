@@ -182,11 +182,24 @@ def _snapshot(case: CaseState, *, include_unreviewed: bool = True) -> str:
     for action in case.actions:
         payload = action.model_dump(mode="json")
         if not include_unreviewed:
-            payload["citations"] = [
+            verified_citations = [
                 citation
                 for citation in payload["citations"]
                 if citation["evidence_id"] in evidence_ids
             ]
+            if len(verified_citations) != len(payload["citations"]):
+                payload = {
+                    "id": payload["id"],
+                    "title": payload["title"],
+                    "status": payload["status"],
+                    "risk": payload["risk"],
+                    "requires_approval": payload["requires_approval"],
+                    "due": payload["due"],
+                    "citations": verified_citations,
+                    "redacted": True,
+                }
+            else:
+                payload["citations"] = verified_citations
         actions.append(payload)
     return json.dumps(
         {
