@@ -7,6 +7,7 @@ transition can be recorded without asking a language model to invent a schema.
 
 from __future__ import annotations
 
+import unicodedata
 from enum import StrEnum
 from typing import Literal
 
@@ -143,9 +144,19 @@ class ApprovalRequest(BaseModel):
     @classmethod
     def reviewer_must_contain_text(cls, value: str) -> str:
         cleaned = value.strip()
-        if len(cleaned) < 2:
+        if len(cleaned) < 2 or any(unicodedata.category(character) in {"Cc", "Cf"} for character in cleaned):
             raise ValueError("reviewer must contain at least two non-whitespace characters")
         return cleaned
+
+    @field_validator("note")
+    @classmethod
+    def note_must_not_contain_control_data(cls, value: str) -> str:
+        if any(
+            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\n", "\t"}
+            for character in value
+        ):
+            raise ValueError("note contains an unsupported control character")
+        return value.strip()
 
 
 class RuntimeInvocation(BaseModel):
@@ -160,7 +171,7 @@ class RuntimeInvocation(BaseModel):
         if value is None:
             return None
         cleaned = value.strip()
-        if not cleaned or any(ord(character) < 32 or ord(character) == 127 for character in cleaned):
+        if not cleaned or any(unicodedata.category(character) in {"Cc", "Cf"} for character in cleaned):
             raise ValueError("case_id must contain printable characters")
         return cleaned
 

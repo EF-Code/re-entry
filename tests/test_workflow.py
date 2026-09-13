@@ -30,6 +30,8 @@ def test_runtime_health_aliases_and_plan_invocation_contract() -> None:
 
     missing = client.post("/invocations", json={"case_id": "missing"})
     assert missing.status_code == 404
+    unsafe = client.post("/invocations", json={"case_id": "\u202e"})
+    assert unsafe.status_code == 422
     unsupported = client.post("/invocations", json={"operation": "send_money"})
     assert unsupported.status_code == 422
 
@@ -161,6 +163,11 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
         json={"reviewer": "   ", "note": "Nope"},
     )
     assert whitespace_reviewer.status_code == 422
+    control_note = client.post(
+        "/api/cases/case-042/actions/act-02/approve",
+        json={"reviewer": "Jo", "note": "bad\u0000note"},
+    )
+    assert control_note.status_code == 422
 
 
 def test_store_apply_allows_only_one_concurrent_approval() -> None:
