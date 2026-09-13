@@ -103,7 +103,14 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
     raw_name = file.filename or ""
     safe_name = PurePath(raw_name).name
     extension = PurePath(safe_name).suffix.lower()
-    if not safe_name or safe_name != raw_name or extension not in ALLOWED_EXTENSIONS:
+    if (
+        not safe_name
+        or safe_name != raw_name
+        or "/" in raw_name
+        or "\\" in raw_name
+        or any(ord(character) < 32 for character in raw_name)
+        or extension not in ALLOWED_EXTENSIONS
+    ):
         raise HTTPException(status_code=415, detail="Use a PDF, text, CSV, PNG, or JPEG file with a safe filename")
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     if not content:

@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules
+frontend/node_modules
+frontend/dist
+backend/__pycache__
+tests
+docs
+*.py[cod]
+.pytest_cache
+.ruff_cache
+

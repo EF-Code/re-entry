@@ -69,6 +69,7 @@ function formatActionStatus(status) {
 
 function App() {
   const [caseData, setCaseData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [approvalAction, setApprovalAction] = useState(null);
@@ -80,10 +81,14 @@ function App() {
     const response = await fetch("/api/case");
     if (!response.ok) throw new Error("Could not load the case");
     setCaseData(await response.json());
+    setLoadError(null);
   };
 
   useEffect(() => {
-    loadCase().catch((error) => setNotice({ type: "error", text: error.message }));
+    loadCase().catch((error) => {
+      setLoadError(error.message);
+      setNotice({ type: "error", text: error.message });
+    });
   }, []);
 
   useEffect(() => {
@@ -193,7 +198,7 @@ function App() {
   };
 
   if (!caseData) {
-    return <div className="loading-screen"><div className="loading-mark">RE:ENTRY</div><div className="loading-line" /><p>Opening the recovery desk…</p></div>;
+    return <div className="loading-screen"><div className="loading-mark">RE:ENTRY</div><div className="loading-line" />{loadError ? <><p>{loadError}</p><button className="run-button" onClick={() => loadCase().catch((error) => setLoadError(error.message))}>Try again</button></> : <p>Opening the recovery desk…</p>}</div>;
   }
 
   const approval = caseData.actions.find((action) => action.status === "needs_approval");
@@ -210,7 +215,7 @@ function App() {
       <div className="workspace">
         <aside className="sidebar" aria-label="Primary navigation">
           <nav className="side-nav">
-            {navItems.map(([id, label, icon]) => <button key={id} className={`nav-item ${id === "cases" ? "nav-active" : ""}`} onClick={() => id === "cases" && jumpTo("overview")}><Icon name={icon} size={19} /><span>{label}</span></button>)}
+            {navItems.map(([id, label, icon]) => <button key={id} className={`nav-item ${id === "cases" ? "nav-active" : ""}`} onClick={() => jumpTo({ cases: "overview", map: "timeline", people: "people", resources: "evidence", communications: "actions", analytics: "people", settings: "notes" }[id])}><Icon name={icon} size={19} /><span>{label}</span></button>)}
           </nav>
           <div className="side-quote"><span className="quote-rule" /><p>“Stronger<br />communities<br />live here<br />again.”</p><small>RE:ENTRY field note 042</small></div>
           <div className="side-footer"><span className="avatar">MO</span><div><strong>Maya's advocate</strong><small>Case steward</small></div><Icon name="chevron" size={14} /></div>
@@ -299,4 +304,3 @@ function ApprovalModal({ action, onClose, onApprove, busy }) {
 }
 
 createRoot(document.getElementById("root")).render(<StrictMode><App /></StrictMode>);
-
