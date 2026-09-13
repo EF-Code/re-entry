@@ -69,6 +69,10 @@
           "value": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
         },
         {
+          "name": "REENTRY_MODEL_ID",
+          "value": "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        },
+        {
           "name": "REENTRY_ALLOW_EPHEMERAL_STORE",
           "value": "false"
         }

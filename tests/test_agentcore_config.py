@@ -25,6 +25,7 @@ def test_agentcore_runtime_spec_is_authenticated_and_bounded() -> None:
     assert env_vars["REENTRY_MAX_IN_FLIGHT_PLANS"] == "8"
     assert env_vars["REENTRY_LIVE_ALLOW_UNREVIEWED_DATA"] == "false"
     assert env_vars["REENTRY_ALLOWED_AWS_REGIONS"] == "us-east-1"
+    assert env_vars["REENTRY_MODEL_ID"] == "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     assert env_vars["REENTRY_ALLOW_EPHEMERAL_STORE"] == "false"
     assert int(env_vars["REENTRY_MAX_LIVE_PLAN_RUNS"]) in range(1, 101)
     assert all(
