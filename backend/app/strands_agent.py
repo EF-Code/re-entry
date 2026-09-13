@@ -138,6 +138,12 @@ approve any action that shares personal data or creates an official case.
 
 DEFAULT_REENTRY_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 DEFAULT_REENTRY_REGION = "us-east-1"
+# Keep one live request from becoming an unbounded model/tool loop. The
+# deterministic demo does not make provider calls, but it uses the same
+# structured-output boundary and remains useful for regression coverage.
+MAX_AGENT_TURNS = 4
+MAX_AGENT_OUTPUT_TOKENS = 1_200
+MAX_AGENT_TOTAL_TOKENS = 12_000
 
 
 def _configured_allowlist(name: str, default: str, *, max_item_length: int = 256) -> set[str]:
@@ -326,7 +332,14 @@ def invoke_strands(case: CaseState) -> AgentPlan:
         name="reentry-planner",
         description="Grounded recovery plan proposer",
     )
-    result = agent("Review the case snapshot, identify the safest next steps, and explain any conflict.")
+    result = agent(
+        "Review the case snapshot, identify the safest next steps, and explain any conflict.",
+        limits={
+            "turns": MAX_AGENT_TURNS,
+            "output_tokens": MAX_AGENT_OUTPUT_TOKENS,
+            "total_tokens": MAX_AGENT_TOTAL_TOKENS,
+        },
+    )
     if result.structured_output is not None:
         return AgentPlan.model_validate(result.structured_output)
     raise RuntimeError("Strands returned no structured plan")

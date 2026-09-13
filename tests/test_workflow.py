@@ -349,6 +349,58 @@ def test_live_model_configuration_requires_allowlisted_region_and_model(
         _validate_live_model_configuration("eu-west-1", "approved-model")
 
 
+def test_live_agent_call_has_bounded_turn_and_token_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    import strands
+    import strands.models
+    from app.demo_data import clone_demo_case
+    from app.strands_agent import (
+        MAX_AGENT_OUTPUT_TOKENS,
+        MAX_AGENT_TOTAL_TOKENS,
+        MAX_AGENT_TURNS,
+        invoke_strands,
+    )
+
+    calls: dict[str, object] = {}
+
+    class FakeBedrockModel:
+        def __init__(self, **kwargs: object) -> None:
+            calls["model"] = kwargs
+
+    class FakeAgent:
+        def __init__(self, **kwargs: object) -> None:
+            calls["agent"] = kwargs
+
+        def __call__(self, prompt: str, **kwargs: object) -> SimpleNamespace:
+            calls["prompt"] = prompt
+            calls["limits"] = kwargs.get("limits")
+            return SimpleNamespace(
+                structured_output={
+                    "summary": "Bounded plan",
+                    "recommended_action_ids": ["act-02"],
+                    "warnings": [],
+                    "confidence": 0.8,
+                }
+            )
+
+    monkeypatch.setattr(strands, "Agent", FakeAgent)
+    monkeypatch.setattr(strands.models, "BedrockModel", FakeBedrockModel)
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.setenv("REENTRY_ALLOWED_AWS_REGIONS", "us-east-1")
+    monkeypatch.setenv("REENTRY_ALLOWED_MODEL_IDS", "approved-model")
+    monkeypatch.setenv("REENTRY_MODEL_ID", "approved-model")
+
+    decision = invoke_strands(clone_demo_case())
+
+    assert decision.recommended_action_ids == ["act-02"]
+    assert calls["limits"] == {
+        "turns": MAX_AGENT_TURNS,
+        "output_tokens": MAX_AGENT_OUTPUT_TOKENS,
+        "total_tokens": MAX_AGENT_TOTAL_TOKENS,
+    }
+
+
 def test_live_allowlists_reject_control_characters(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.strands_agent import _configured_allowlist
 
