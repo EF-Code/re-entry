@@ -89,6 +89,10 @@ def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None
     assert capped_run.status_code == 429
     assert capped_run.json()["detail"] == "Case plan run limit reached (100)"
 
+    capped_rejection = client.post("/api/cases/case-042/simulate-rejection")
+    assert capped_rejection.status_code == 409
+    assert capped_rejection.json()["detail"] == "Case evidence limit reached (6)"
+
 
 def test_case_has_grounded_evidence_and_approval_gate() -> None:
     response = client.get("/api/case")

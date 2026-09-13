@@ -152,7 +152,7 @@ def approve_action(case: CaseState, action_id: str, reviewer: str, note: str) ->
     return case
 
 
-def simulate_rejection(case: CaseState) -> CaseState:
+def simulate_rejection(case: CaseState, *, max_evidence: int = 100) -> CaseState:
     """Feed a safe, deterministic connector rejection back into the planner."""
 
     target = next((item for item in case.actions if item.id == "act-03"), None)
@@ -160,6 +160,8 @@ def simulate_rejection(case: CaseState) -> CaseState:
         raise KeyError("insurer_action_not_found")
     if target.status == ActionStatus.blocked and any(item.id == "act-06" for item in case.actions):
         return case
+    if len(case.evidence) >= max_evidence:
+        raise ValueError("evidence_limit_reached")
 
     timestamp = _now()
     target.status = ActionStatus.blocked

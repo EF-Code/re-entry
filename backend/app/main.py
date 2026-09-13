@@ -289,10 +289,17 @@ def approve_case_action(case_id: str, action_id: str, request: ApprovalRequest) 
 def reject_case_action(case_id: str) -> CaseState:
     _case_or_404(case_id)
     try:
-        return store.apply(case_id, simulate_rejection)
+        return store.apply(
+            case_id,
+            lambda case: simulate_rejection(case, max_evidence=MAX_CASE_EVIDENCE),
+        )
     except KeyError as exc:
         detail = "Case not found" if exc.args and exc.args[0] == "case_not_found" else "Insurer action not found"
         raise HTTPException(status_code=404, detail=detail) from exc
+    except ValueError as exc:
+        if exc.args and exc.args[0] == "evidence_limit_reached":
+            raise HTTPException(status_code=409, detail=f"Case evidence limit reached ({MAX_CASE_EVIDENCE})") from exc
+        raise
 
 
 @app.post("/api/cases/{case_id}/reset", response_model=CaseState)
