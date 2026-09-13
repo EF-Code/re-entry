@@ -448,6 +448,13 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
     assert control_note.status_code == 422
 
 
+def test_approval_note_is_single_line() -> None:
+    from app.models import ApprovalRequest
+
+    request = ApprovalRequest(note="  Checked\n  address and\tdeadline. ")
+    assert request.note == "Checked address and deadline."
+
+
 def test_store_apply_allows_only_one_concurrent_approval() -> None:
     from concurrent.futures import ThreadPoolExecutor
 

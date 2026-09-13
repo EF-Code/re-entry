@@ -163,11 +163,11 @@ class ApprovalRequest(BaseModel):
     @classmethod
     def note_must_not_contain_control_data(cls, value: str) -> str:
         if any(
-            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\n", "\t"}
+            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\n", "\t", "\r"}
             for character in value
         ):
             raise ValueError("note contains an unsupported control character")
-        return value.strip()
+        return " ".join(value.split())
 
 
 class RuntimeInvocation(BaseModel):
