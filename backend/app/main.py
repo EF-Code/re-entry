@@ -27,7 +27,13 @@ from .models import (
     RuntimeInvocation,
     UploadReceipt,
 )
-from .pipeline import MAX_CASE_PLAN_RUNS, approve_action, run_intake, simulate_rejection
+from .pipeline import (
+    MAX_CASE_PLAN_RUNS,
+    approve_action,
+    configured_plan_run_limit,
+    run_intake,
+    simulate_rejection,
+)
 from .store import CaseStore
 
 logger = logging.getLogger("re-entry")
@@ -318,6 +324,15 @@ def _default_case_id() -> str:
     return os.getenv("REENTRY_CASE_ID", "case-042").strip() or "case-042"
 
 
+def _plan_limit_for_error() -> int:
+    """Use the effective budget in a response without exposing bad config."""
+
+    try:
+        return configured_plan_run_limit()
+    except RuntimeError:
+        return MAX_CASE_PLAN_RUNS
+
+
 def _require_demo_mode() -> None:
     """Keep synthetic reset/rejection controls out of a live runtime."""
 
@@ -359,7 +374,7 @@ def invoke_runtime(request: RuntimeInvocation) -> CaseState:
         raise HTTPException(status_code=404, detail="Case not found") from exc
     except ValueError as exc:
         if exc.args and exc.args[0] == "plan_run_limit_reached":
-            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({MAX_CASE_PLAN_RUNS})") from exc
+            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({_plan_limit_for_error()})") from exc
         raise
 
 
@@ -377,7 +392,7 @@ def run_case(case_id: str) -> CaseState:
         raise HTTPException(status_code=404, detail="Case not found") from exc
     except ValueError as exc:
         if exc.args and exc.args[0] == "plan_run_limit_reached":
-            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({MAX_CASE_PLAN_RUNS})") from exc
+            raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({_plan_limit_for_error()})") from exc
         raise
 
 
