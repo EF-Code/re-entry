@@ -208,6 +208,7 @@ def test_strands_failures_keep_the_demo_safe(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
+    monkeypatch.setenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", "true")
 
     def fail_live(_: object):
         raise RuntimeError("provider credentials must not escape")
@@ -221,6 +222,42 @@ def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.Monkey
     assert fallback.json()["mode"] == "demo-fallback"
     assert "provider credentials" not in fallback.text
     assert "Live planner was unavailable" in fallback.json()["audit"][-1]["detail"]
+
+
+def test_live_planner_blocks_unreviewed_evidence_without_explicit_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.demo_data import clone_demo_case
+    from app.strands_agent import plan_case
+
+    monkeypatch.setenv("REENTRY_MODE", "live")
+    monkeypatch.delenv("REENTRY_LIVE_ALLOW_UNREVIEWED_DATA", raising=False)
+    decision = plan_case(clone_demo_case())
+    assert decision.mode == "demo-fallback"
+    assert "deployment data/model policy" in decision.warnings[0]
+
+
+def test_live_snapshot_redacts_unreviewed_excerpts() -> None:
+    from app.demo_data import clone_demo_case
+    from app.strands_agent import _snapshot
+
+    snapshot = _snapshot(clone_demo_case(), include_unreviewed=False)
+    assert "Harbor Mutual asks for a signed contents inventory" not in snapshot
+    assert '"review_queue"' in snapshot
+    assert '"id": "ev-04"' in snapshot
+
+
+def test_live_model_configuration_requires_allowlisted_region_and_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.strands_agent import _validate_live_model_configuration
+
+    monkeypatch.setenv("REENTRY_ALLOWED_AWS_REGIONS", "us-east-1")
+    monkeypatch.setenv("REENTRY_ALLOWED_MODEL_IDS", "approved-model")
+    with pytest.raises(ValueError, match="REENTRY_ALLOWED_MODEL_IDS"):
+        _validate_live_model_configuration("us-east-1", "other-model")
+    with pytest.raises(ValueError, match="REENTRY_ALLOWED_AWS_REGIONS"):
+        _validate_live_model_configuration("eu-west-1", "approved-model")
 
 
 def test_model_recommendations_are_grounded_before_use() -> None:

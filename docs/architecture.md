@@ -25,13 +25,16 @@ flowchart LR
 
 1. The case starts with synthetic county, lease, photo, insurer, estimate, and
    utility evidence. Uploaded files are bounded before multipart parsing,
-   size-limited, filename-validated, and quarantined as `needs_review`. The
-   demo also caps each case at 100 evidence records and 100 plan passes so
+   streamed without a replay buffer, subject to a per-chunk deadline and chunk
+   cap, size-limited, filename-validated, and quarantined as `needs_review`.
+   The demo also caps each case at 100 evidence records and 100 plan passes so
    planner input and in-memory history remain bounded.
 2. The Strands-compatible coordinator builds a plan from the case snapshot.
    The demo adapter uses a deterministic `strands.Agent` + structured-output
    model with no network call. `REENTRY_MODE=live` swaps in
-   `strands.Agent` + `BedrockModel` and requires AWS credentials.
+   `strands.Agent` + `BedrockModel`, requires AWS credentials, enforces the
+   configured region/model allowlists, and excludes unreviewed evidence unless
+   an operator explicitly opts in.
 3. Evidence citations and a trace step are attached to each plan pass. Source
    text is data, never an instruction, and cannot mutate the case by itself.
 4. The safety gate classifies risk. Actions that share an address, create an
@@ -61,6 +64,8 @@ contract.
 
 The runtime seam is now explicit locally: `/health` and `/ping` are readiness
 aliases, while `POST /invocations` accepts only a bounded `case_id` and the
-plan operation. It cannot approve, submit, or call a connector. AgentCore
-Runtime deployment still requires an ARM64 image, an authorizer, scoped IAM,
-and a verified AWS endpoint.
+plan operation. It cannot approve, submit, or call a connector. Request-body
+limits are enforced before FastAPI parses JSON or multipart input, and the
+interactive docs/OpenAPI schema are disabled. AgentCore Runtime deployment
+still requires an ARM64 image, an authorizer, scoped IAM, and a verified AWS
+endpoint.

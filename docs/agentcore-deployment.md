@@ -9,10 +9,16 @@ BYO-container HTTP runtime:
 - Inbound authorization is `AWS_IAM`; there is no unauthenticated production
   configuration.
 - OTel is enabled and short request/reply session lifetimes are explicit.
+- The local runtime disables interactive docs/OpenAPI, rejects slow or
+  over-limit request bodies before parsing, and keeps demo reset/rejection
+  routes unavailable when `REENTRY_MODE=live`.
 
 The committed values intentionally use `REENTRY_MODE=demo` and synthetic case
 data. Do not switch to live mode until durable storage, an approved Bedrock
-model, and connector policies have been provisioned.
+model, a region/model allowlist, and connector policies have been provisioned.
+Live planning also requires an explicit decision about whether any
+`needs_review` evidence may leave the runtime; the safe default is to exclude
+it (`REENTRY_LIVE_ALLOW_UNREVIEWED_DATA=false`).
 
 ## Preflight
 
