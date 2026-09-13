@@ -348,7 +348,12 @@ class RequestBodyLimitMiddleware:
             await _send_limit_error(scope, send, 413, limit[1])
             return
 
-        reserved_body_bytes = content_length if content_length is not None else limit[0]
+        # Reserve the route's full bounded envelope rather than trusting a
+        # caller-controlled Content-Length for aggregate admission. The
+        # header still lets us reject an obviously oversized request early,
+        # but a smaller declaration must not let many streams evade the
+        # process-wide in-flight byte budget.
+        reserved_body_bytes = limit[0]
         if not _try_reserve_request(reserved_body_bytes):
             await _send_limit_error(scope, send, 429, "Too many requests in flight")
             return

@@ -206,6 +206,35 @@ def test_streaming_request_receiver_rejects_aggregate_inflight_limit(monkeypatch
     assert downstream_called is False
 
 
+def test_streaming_request_receiver_reserves_route_envelope_not_declared_length() -> None:
+    from app.main import RequestBodyLimitMiddleware
+
+    observed: list[int] = []
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    async def downstream(scope, limited_receive, downstream_send) -> None:
+        del downstream_send
+        observed.append(main_module._in_flight_body_bytes)
+        await limited_receive()
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/invocations",
+        "headers": [(b"content-length", b"1")],
+    }
+    asyncio.run(RequestBodyLimitMiddleware(downstream)(scope, receive, send))
+    assert sent == []
+    assert observed == [main_module.MAX_JSON_BODY_BYTES]
+    assert main_module._in_flight_body_bytes == 0
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
