@@ -8,7 +8,7 @@ claim that AWS infrastructure has been deployed.
 | --- | --- | --- |
 | Strands orchestration | **done locally** | `strands.Agent` with deterministic offline model; Bedrock adapter behind `REENTRY_MODE=live` |
 | Human approval boundary | **done locally** | `needs_approval` actions cannot be approved by the planner; approvals bind to a case revision, and audit marks demo caller labels unverified |
-| Untrusted document handling | **done locally** | Bounded pre-parser, incremental upload hashing, upload size, extension, path/control-character checks, per-case cap, and quarantine tests |
+| Untrusted document handling | **done locally** | Bounded pre-parser, absolute/per-chunk request deadlines, incremental upload hashing, upload size, extension/path/control-character checks, per-case cap, and quarantine tests |
 | Safe provider failures | **done locally** | Live-mode exceptions fall back without exposing internals |
 | Container artifact | **done locally** | Digest-pinned multi-stage image; amd64/ARM64 builds, health smoke, non-root runtime, and ~89 MB local image size |
 | Bedrock model configuration | **done locally** | Live adapter defaults to the current US Claude Sonnet 4.5 geo inference profile and keeps an explicit 1,200-token cap |

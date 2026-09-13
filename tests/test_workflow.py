@@ -151,6 +151,35 @@ def test_streaming_request_receiver_times_out_stalled_body(monkeypatch: pytest.M
     assert sent[0]["status"] == 408
 
 
+def test_streaming_request_receiver_enforces_absolute_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import RequestBodyLimitMiddleware
+
+    monkeypatch.setattr(main_module, "REQUEST_READ_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(main_module, "REQUEST_MAX_DURATION_SECONDS", 0.03)
+    calls = 0
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            await asyncio.sleep(0.02)
+        return {"type": "http.request", "body": b"{}", "more_body": calls < 4}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    async def downstream(scope, limited_receive, downstream_send) -> None:
+        while True:
+            message = await limited_receive()
+            if not message.get("more_body", False):
+                return
+
+    scope = {"type": "http", "method": "POST", "path": "/invocations", "headers": []}
+    asyncio.run(RequestBodyLimitMiddleware(downstream)(scope, receive, send))
+    assert sent[0]["status"] == 408
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
@@ -544,6 +573,19 @@ def test_approval_note_is_single_line() -> None:
     assert request.note == "Checked address and deadline."
 
 
+def test_external_text_rejects_lone_unicode_surrogates() -> None:
+    from app.models import ApprovalRequest, RuntimeInvocation
+
+    with pytest.raises(ValueError):
+        ApprovalRequest(reviewer="Jo\ud800")
+    with pytest.raises(ValueError):
+        ApprovalRequest(note="ok\ud800")
+    with pytest.raises(ValueError):
+        RuntimeInvocation(case_id="case-\ud800")
+    with pytest.raises(ValueError):
+        AgentPlan(summary="Plan\ud800", confidence=0.5)
+
+
 def test_stale_approval_revision_is_rejected() -> None:
     client.post("/api/cases/case-042/reset")
     revision = client.get("/api/case").json()["revision"]
@@ -554,6 +596,31 @@ def test_stale_approval_revision_is_rejected() -> None:
     )
     assert stale.status_code == 409
     assert stale.json()["detail"] == "Case changed; reload before approving"
+
+
+def test_noop_store_transition_preserves_revision() -> None:
+    local_store = CaseStore()
+    initial = local_store.get("case-042")
+    updated = local_store.apply("case-042", lambda case: case)
+    assert updated.revision == initial.revision
+    assert local_store.get("case-042").revision == initial.revision
+
+
+def test_store_rejects_revision_overflow_without_committing() -> None:
+    from app.models import MAX_CASE_REVISION
+
+    local_store = CaseStore()
+    case = local_store.get("case-042")
+    case.revision = MAX_CASE_REVISION
+    local_store.put(case)
+
+    def change_summary(working):
+        working.summary = "Changed at the revision boundary."
+        return working
+
+    with pytest.raises(ValueError, match="case_revision_limit_reached"):
+        local_store.apply("case-042", change_summary)
+    assert local_store.get("case-042").revision == MAX_CASE_REVISION
 
 
 def test_store_apply_allows_only_one_concurrent_approval() -> None:
@@ -718,3 +785,12 @@ def test_upload_limit_configuration_rejects_invalid_values(monkeypatch: pytest.M
     monkeypatch.setenv("REENTRY_REQUEST_READ_TIMEOUT_SECONDS", "0")
     with pytest.raises(RuntimeError, match="between 1"):
         main_module._configured_request_read_timeout()
+
+    monkeypatch.setenv("REENTRY_REQUEST_MAX_DURATION_SECONDS", "0")
+    with pytest.raises(RuntimeError, match="between 1"):
+        main_module._configured_request_max_duration()
+
+    monkeypatch.setenv("REENTRY_REQUEST_MAX_DURATION_SECONDS", "10")
+    monkeypatch.setattr(main_module, "REQUEST_READ_TIMEOUT_SECONDS", 30)
+    with pytest.raises(RuntimeError, match="at least"):
+        main_module._configured_request_max_duration()

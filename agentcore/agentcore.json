@@ -41,6 +41,10 @@
           "value": "10"
         },
         {
+          "name": "REENTRY_REQUEST_MAX_DURATION_SECONDS",
+          "value": "300"
+        },
+        {
           "name": "REENTRY_LIVE_ALLOW_UNREVIEWED_DATA",
           "value": "false"
         },

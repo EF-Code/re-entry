@@ -25,8 +25,9 @@ flowchart LR
 
 1. The case starts with synthetic county, lease, photo, insurer, estimate, and
    utility evidence. Uploaded files are bounded before multipart parsing,
-   streamed without a replay buffer, subject to a per-chunk deadline and chunk
-   cap, size-limited, filename-validated, and quarantined as `needs_review`;
+   streamed without a replay buffer, subject to an absolute request deadline,
+   per-chunk deadline, and chunk cap, size-limited, filename-validated, and
+   quarantined as `needs_review`;
    text excerpts are control-character-sanitized before persistence.
    The demo also caps each case at 100 evidence records and 100 plan passes so
    planner input and in-memory history remain bounded. Live mode uses a

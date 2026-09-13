@@ -6,7 +6,7 @@ from collections.abc import Callable
 from threading import RLock
 
 from .demo_data import clone_demo_case
-from .models import CaseState
+from .models import MAX_CASE_REVISION, CaseState
 
 
 class CaseStore:
@@ -47,7 +47,16 @@ class CaseStore:
             with self._registry_lock:
                 case = self._cases[case_id]
                 working = case.model_copy(deep=True)
+            before = working.model_copy(deep=True)
             updated = transition(working)
+            # Idempotent transitions (for example a duplicate upload or a
+            # repeated demo rejection) must not invalidate an approval that
+            # was based on the current revision. Compare the complete working
+            # state before advancing the optimistic-concurrency token.
+            if updated == before:
+                return updated.model_copy(deep=True)
+            if working.revision >= MAX_CASE_REVISION:
+                raise ValueError("case_revision_limit_reached")
             updated.revision = working.revision + 1
             with self._registry_lock:
                 self._cases[case_id] = updated.model_copy(deep=True)
@@ -60,6 +69,9 @@ class CaseStore:
                 raise KeyError("case_not_found")
             with self._registry_lock:
                 replacement = clone_demo_case()
-                replacement.revision = self._cases[case_id].revision + 1
+                current_revision = self._cases[case_id].revision
+                if current_revision >= MAX_CASE_REVISION:
+                    raise ValueError("case_revision_limit_reached")
+                replacement.revision = current_revision + 1
                 self._cases[case_id] = replacement
                 return self._cases[case_id].model_copy(deep=True)

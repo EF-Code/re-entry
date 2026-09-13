@@ -13,3 +13,17 @@ docs
 *.py[cod]
 .pytest_cache
 .ruff_cache
+
+# Local runtime/deployment state. These paths are intentionally ignored by
+# Git too, but Docker context transfer must deny them independently.
+data/
+uploads/
+*.db
+*.sqlite
+*.sqlite3
+.venv/
+venv/
+frontend/.vite/
+agentcore/aws-targets.json
+agentcore/.env.local
+agentcore/.cli/

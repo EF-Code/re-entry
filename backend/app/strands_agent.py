@@ -49,7 +49,7 @@ class AgentPlan(BaseModel):
     @classmethod
     def summary_is_single_line_text(cls, value: str) -> str:
         if any(
-            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\t", "\n", "\r"}
+            unicodedata.category(character) in {"Cc", "Cf", "Cs"} and character not in {"\t", "\n", "\r"}
             for character in value
         ):
             raise ValueError("summary contains an unsupported control character")
@@ -64,7 +64,7 @@ class AgentPlan(BaseModel):
         cleaned: list[str] = []
         for warning in value:
             if any(
-                unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\t", "\n", "\r"}
+                unicodedata.category(character) in {"Cc", "Cf", "Cs"} and character not in {"\t", "\n", "\r"}
                 for character in warning
             ):
                 raise ValueError("warning contains an unsupported control character")
@@ -153,7 +153,7 @@ def _configured_allowlist(name: str, default: str, *, max_item_length: int = 256
     values = {item.strip() for item in raw_value.split(",") if item.strip()}
     if not values or any(
         len(item) > max_item_length
-        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in item)
+        or any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in item)
         for item in values
     ):
         raise ValueError(f"{name} must contain at least one bounded value")
@@ -308,8 +308,8 @@ def invoke_strands(case: CaseState) -> AgentPlan:
     if (
         not model_id
         or len(model_id) > 256
-        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in model_id)
-        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in region)
+        or any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in model_id)
+        or any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in region)
     ):
         raise ValueError("REENTRY_MODEL_ID must be a non-empty model identifier")
     _validate_live_model_configuration(region, model_id)

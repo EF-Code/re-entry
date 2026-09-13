@@ -19,6 +19,7 @@ def test_agentcore_runtime_spec_is_authenticated_and_bounded() -> None:
     assert (ROOT / runtime["dockerfile"]).is_file()
     env_vars = {item["name"]: item["value"] for item in runtime.get("envVars", [])}
     assert env_vars["REENTRY_MAX_LIVE_PLAN_RUNS"] == "10"
+    assert env_vars["REENTRY_REQUEST_MAX_DURATION_SECONDS"] == "300"
     assert env_vars["REENTRY_LIVE_ALLOW_UNREVIEWED_DATA"] == "false"
     assert env_vars["REENTRY_ALLOWED_AWS_REGIONS"] == "us-east-1"
     assert env_vars["REENTRY_ALLOW_EPHEMERAL_STORE"] == "false"
@@ -35,3 +36,19 @@ def test_agentcore_target_example_is_safe_placeholder() -> None:
     assert targets[0]["account"] == "123456789012"
     assert targets[0]["region"] == "us-east-1"
     assert json.loads((ROOT / "agentcore/aws-targets.json").read_text()) == []
+
+
+def test_dockerignore_excludes_local_runtime_and_deployment_state() -> None:
+    dockerignore = (ROOT / ".dockerignore").read_text()
+    for required in (
+        "data/",
+        "uploads/",
+        "*.db",
+        "*.sqlite",
+        "*.sqlite3",
+        ".venv/",
+        "frontend/.vite/",
+        "agentcore/aws-targets.json",
+        "agentcore/.cli/",
+    ):
+        assert required in dockerignore

@@ -13,6 +13,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+MAX_CASE_REVISION = 100_000
+UNSAFE_UNICODE_CATEGORIES = {"Cc", "Cf", "Cs"}
+
 
 class EvidenceKind(StrEnum):
     official_notice = "official_notice"
@@ -139,7 +142,7 @@ class CaseState(BaseModel):
     next_deadline: str = Field(min_length=1, max_length=80)
     confidence: float = Field(ge=0, le=1)
     mode: str = Field(default="demo", min_length=1, max_length=40)
-    revision: int = Field(default=0, ge=0, le=100_000)
+    revision: int = Field(default=0, ge=0, le=MAX_CASE_REVISION)
     run_count: int = Field(default=0, ge=0, le=100_000)
     evidence: list[Evidence] = Field(default_factory=list, max_length=100)
     actions: list[Action] = Field(default_factory=list, max_length=100)
@@ -149,7 +152,7 @@ class CaseState(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    expected_revision: int | None = Field(default=None, ge=0, le=100_000)
+    expected_revision: int | None = Field(default=None, ge=0, le=MAX_CASE_REVISION)
     reviewer: str = Field(default="Demo reviewer", min_length=2, max_length=80)
     note: str = Field(default="Approved after reviewing the cited evidence.", max_length=500)
 
@@ -157,7 +160,7 @@ class ApprovalRequest(BaseModel):
     @classmethod
     def reviewer_must_contain_text(cls, value: str) -> str:
         cleaned = value.strip()
-        if len(cleaned) < 2 or any(unicodedata.category(character) in {"Cc", "Cf"} for character in cleaned):
+        if len(cleaned) < 2 or any(unicodedata.category(character) in UNSAFE_UNICODE_CATEGORIES for character in cleaned):
             raise ValueError("reviewer must contain at least two non-whitespace characters")
         return cleaned
 
@@ -165,7 +168,7 @@ class ApprovalRequest(BaseModel):
     @classmethod
     def note_must_not_contain_control_data(cls, value: str) -> str:
         if any(
-            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\n", "\t", "\r"}
+            unicodedata.category(character) in UNSAFE_UNICODE_CATEGORIES and character not in {"\n", "\t", "\r"}
             for character in value
         ):
             raise ValueError("note contains an unsupported control character")
@@ -184,7 +187,7 @@ class RuntimeInvocation(BaseModel):
         if value is None:
             return None
         cleaned = value.strip()
-        if not cleaned or any(unicodedata.category(character) in {"Cc", "Cf"} for character in cleaned):
+        if not cleaned or any(unicodedata.category(character) in UNSAFE_UNICODE_CATEGORIES for character in cleaned):
             raise ValueError("case_id must contain printable characters")
         return cleaned
 

@@ -7,6 +7,7 @@ import hashlib
 import logging
 import os
 import re
+import time
 import unicodedata
 from pathlib import PurePath
 
@@ -61,6 +62,8 @@ DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_CONFIGURED_UPLOAD_BYTES = 100 * 1024 * 1024
 DEFAULT_REQUEST_READ_TIMEOUT_SECONDS = 30
 MAX_CONFIGURED_REQUEST_READ_TIMEOUT_SECONDS = 300
+DEFAULT_REQUEST_MAX_DURATION_SECONDS = 300
+MAX_CONFIGURED_REQUEST_MAX_DURATION_SECONDS = 3_600
 
 
 def _configured_upload_limit() -> int:
@@ -95,6 +98,30 @@ def _configured_request_read_timeout() -> float:
     return value
 
 
+def _configured_request_max_duration() -> float:
+    raw_value = os.getenv(
+        "REENTRY_REQUEST_MAX_DURATION_SECONDS",
+        str(DEFAULT_REQUEST_MAX_DURATION_SECONDS),
+    )
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "REENTRY_REQUEST_MAX_DURATION_SECONDS must be a positive number"
+        ) from exc
+    if not 1 <= value <= MAX_CONFIGURED_REQUEST_MAX_DURATION_SECONDS:
+        raise RuntimeError(
+            "REENTRY_REQUEST_MAX_DURATION_SECONDS must be between 1 and "
+            f"{MAX_CONFIGURED_REQUEST_MAX_DURATION_SECONDS}"
+        )
+    if value < REQUEST_READ_TIMEOUT_SECONDS:
+        raise RuntimeError(
+            "REENTRY_REQUEST_MAX_DURATION_SECONDS must be at least "
+            "REENTRY_REQUEST_READ_TIMEOUT_SECONDS"
+        )
+    return value
+
+
 def _format_size(value: int) -> str:
     if value % (1024 * 1024) == 0:
         return f"{value // (1024 * 1024)} MB"
@@ -106,6 +133,7 @@ def _format_size(value: int) -> str:
 MAX_UPLOAD_BYTES = _configured_upload_limit()
 MAX_UPLOAD_LABEL = _format_size(MAX_UPLOAD_BYTES)
 REQUEST_READ_TIMEOUT_SECONDS = _configured_request_read_timeout()
+REQUEST_MAX_DURATION_SECONDS = _configured_request_max_duration()
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MAX_CASE_EVIDENCE = 100
@@ -239,7 +267,7 @@ def _safe_text_excerpt(source: bytes) -> str:
 
     decoded = source.decode("utf-8", errors="replace")
     sanitized = "".join(
-        " " if unicodedata.category(character) in {"Cc", "Cf"} else character
+        " " if unicodedata.category(character) in {"Cc", "Cf", "Cs"} else character
         for character in decoded
     )
     return re.sub(r"\s+", " ", sanitized).strip()[:280]
@@ -272,13 +300,21 @@ class RequestBodyLimitMiddleware:
 
         received_bytes = 0
         received_chunks = 0
+        deadline = time.monotonic() + REQUEST_MAX_DURATION_SECONDS
 
         async def limited_receive() -> dict[str, object]:
             nonlocal received_bytes, received_chunks
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RequestBodyReadTimeoutError("Request body exceeded the maximum duration")
             try:
-                message = await asyncio.wait_for(receive(), timeout=REQUEST_READ_TIMEOUT_SECONDS)
+                message = await asyncio.wait_for(
+                    receive(), timeout=min(REQUEST_READ_TIMEOUT_SECONDS, remaining)
+                )
             except TimeoutError as exc:
                 raise RequestBodyReadTimeoutError("Request body read timed out") from exc
+            if time.monotonic() > deadline:
+                raise RequestBodyReadTimeoutError("Request body exceeded the maximum duration")
             if message["type"] == "http.request":
                 received_chunks += 1
                 if received_chunks > MAX_REQUEST_CHUNKS:
@@ -445,6 +481,8 @@ def invoke_runtime(request: RuntimeInvocation) -> CaseState:
     except ValueError as exc:
         if exc.args and exc.args[0] == "plan_run_limit_reached":
             raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({_plan_limit_for_error()})") from exc
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
         raise
 
 
@@ -463,6 +501,8 @@ def run_case(case_id: str) -> CaseState:
     except ValueError as exc:
         if exc.args and exc.args[0] == "plan_run_limit_reached":
             raise HTTPException(status_code=429, detail=f"Case plan run limit reached ({_plan_limit_for_error()})") from exc
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
         raise
 
 
@@ -488,6 +528,8 @@ def approve_case_action(case_id: str, action_id: str, request: ApprovalRequest) 
             raise HTTPException(status_code=428, detail="Approval must include the current case revision") from exc
         if exc.args and exc.args[0] == "stale_case_revision":
             raise HTTPException(status_code=409, detail="Case changed; reload before approving") from exc
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
         raise HTTPException(status_code=409, detail="Action is not waiting for approval") from exc
 
 
@@ -506,6 +548,8 @@ def reject_case_action(case_id: str) -> CaseState:
     except ValueError as exc:
         if exc.args and exc.args[0] == "evidence_limit_reached":
             raise HTTPException(status_code=409, detail=f"Case evidence limit reached ({MAX_CASE_EVIDENCE})") from exc
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
         raise
 
 
@@ -516,6 +560,10 @@ def reset_case(case_id: str) -> CaseState:
         return store.reset(case_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
+    except ValueError as exc:
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
+        raise
 
 
 @app.post("/api/cases/{case_id}/evidence", response_model=UploadReceipt)
@@ -530,7 +578,7 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         or safe_name != raw_name
         or "/" in raw_name
         or "\\" in raw_name
-        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in raw_name)
+        or any(unicodedata.category(character) in {"Cc", "Cf", "Cs"} for character in raw_name)
         or extension not in ALLOWED_EXTENSIONS
     ):
         raise HTTPException(status_code=415, detail="Use a PDF, text, CSV, PNG, or JPEG file with a safe filename")
@@ -583,6 +631,8 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
     except ValueError as exc:
         if exc.args and exc.args[0] == "evidence_limit_reached":
             raise HTTPException(status_code=409, detail=f"Case evidence limit reached ({MAX_CASE_EVIDENCE})") from exc
+        if exc.args and exc.args[0] == "case_revision_limit_reached":
+            raise HTTPException(status_code=409, detail="Case revision limit reached") from exc
         raise
     stored_evidence = next(item for item in updated.evidence if item.id == evidence.id)
     return UploadReceipt(evidence=stored_evidence, message="Evidence quarantined for review; no action was sent.")
