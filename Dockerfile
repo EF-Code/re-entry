@@ -30,6 +30,6 @@ RUN groupadd --system reentry \
     && chown -R reentry:reentry /app
 USER reentry
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
 CMD ["uvicorn", "app.main:app", "--app-dir", "backend", "--host", "0.0.0.0", "--port", "8080"]
