@@ -1,7 +1,8 @@
 # Build the React surface separately so the runtime image contains only the
 # compiled UI and the small FastAPI service. Pass --platform linux/arm64 to
 # docker buildx when publishing for AgentCore Runtime.
-FROM node:22-alpine AS web-build
+# node:22-alpine manifest digest pinned for reproducible multi-architecture builds.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS web-build
 WORKDIR /web
 COPY frontend/package*.json ./
 # Installing without lifecycle scripts avoids an Alpine/overlayfs race where
@@ -12,7 +13,8 @@ RUN npm ci --ignore-scripts --no-audit --no-fund \
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim AS runtime
+# python:3.12-slim manifest digest pinned for reproducible multi-architecture builds.
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     REENTRY_MODE=demo \
