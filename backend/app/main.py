@@ -10,7 +10,7 @@ import re
 import time
 import unicodedata
 from pathlib import PurePath
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,6 +69,8 @@ DEFAULT_MAX_IN_FLIGHT_REQUESTS = 32
 MAX_CONFIGURED_MAX_IN_FLIGHT_REQUESTS = 256
 DEFAULT_MAX_IN_FLIGHT_BODY_BYTES = 256 * 1024 * 1024
 MAX_CONFIGURED_MAX_IN_FLIGHT_BODY_BYTES = 1 * 1024 * 1024 * 1024
+DEFAULT_MAX_IN_FLIGHT_PLANS = 8
+MAX_CONFIGURED_MAX_IN_FLIGHT_PLANS = 64
 
 
 def _configured_upload_limit() -> int:
@@ -160,6 +162,11 @@ MAX_IN_FLIGHT_BODY_BYTES = _configured_positive_limit(
     DEFAULT_MAX_IN_FLIGHT_BODY_BYTES,
     MAX_CONFIGURED_MAX_IN_FLIGHT_BODY_BYTES,
 )
+MAX_IN_FLIGHT_PLANS = _configured_positive_limit(
+    "REENTRY_MAX_IN_FLIGHT_PLANS",
+    DEFAULT_MAX_IN_FLIGHT_PLANS,
+    MAX_CONFIGURED_MAX_IN_FLIGHT_PLANS,
+)
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MAX_CASE_EVIDENCE = 100
@@ -192,6 +199,7 @@ class RequestBodyReadTimeoutError(Exception):
 _in_flight_lock = Lock()
 _in_flight_requests = 0
 _in_flight_body_bytes = 0
+_plan_slots = BoundedSemaphore(MAX_IN_FLIGHT_PLANS)
 
 
 def _try_reserve_request(body_bytes: int) -> bool:
@@ -211,6 +219,19 @@ def _release_request(body_bytes: int) -> None:
     with _in_flight_lock:
         _in_flight_requests = max(0, _in_flight_requests - 1)
         _in_flight_body_bytes = max(0, _in_flight_body_bytes - body_bytes)
+
+
+def _apply_plan(case_id: str) -> CaseState:
+    """Run one plan transition only when a process-wide slot is available."""
+
+    if not _plan_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Planner capacity exhausted")
+    try:
+        return store.apply(case_id, run_intake)
+    finally:
+        # Always release the slot, including provider failures and validation
+        # errors, so one bad request cannot permanently reduce capacity.
+        _plan_slots.release()
 
 
 def _request_limit_for_scope(scope: Scope) -> tuple[int, str] | None:
@@ -537,7 +558,7 @@ def invoke_runtime(request: RuntimeInvocation) -> CaseState:
     _require_storage_ready()
     case_id = request.case_id or _default_case_id()
     try:
-        return store.apply(case_id, run_intake)
+        return _apply_plan(case_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
     except ValueError as exc:
@@ -557,7 +578,7 @@ def get_case(case_id: str) -> CaseState:
 def run_case(case_id: str) -> CaseState:
     _case_or_404(case_id)
     try:
-        return store.apply(case_id, run_intake)
+        return _apply_plan(case_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Case not found") from exc
     except ValueError as exc:

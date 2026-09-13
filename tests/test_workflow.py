@@ -235,6 +235,18 @@ def test_streaming_request_receiver_reserves_route_envelope_not_declared_length(
     assert main_module._in_flight_body_bytes == 0
 
 
+def test_plan_requests_fail_fast_when_process_capacity_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from threading import BoundedSemaphore
+
+    client.post("/api/cases/case-042/reset")
+    monkeypatch.setattr(main_module, "_plan_slots", BoundedSemaphore(0))
+    response = client.post("/api/cases/case-042/run")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Planner capacity exhausted"
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
@@ -859,3 +871,7 @@ def test_upload_limit_configuration_rejects_invalid_values(monkeypatch: pytest.M
     monkeypatch.setenv("REENTRY_MAX_IN_FLIGHT_REQUESTS", "0")
     with pytest.raises(RuntimeError, match="between 1"):
         main_module._configured_positive_limit("REENTRY_MAX_IN_FLIGHT_REQUESTS", 32, 256)
+
+    monkeypatch.setenv("REENTRY_MAX_IN_FLIGHT_PLANS", "65")
+    with pytest.raises(RuntimeError, match="between 1"):
+        main_module._configured_positive_limit("REENTRY_MAX_IN_FLIGHT_PLANS", 8, 64)

@@ -17,7 +17,8 @@ government submissions, insurance claims, or financial actions.
   chunks, and applies both an absolute request deadline and a per-chunk read
   deadline. Upload hashing is incremental
   and retains only a bounded, control-character-sanitized excerpt prefix. Each
-  process also caps body-bearing requests and reserved in-flight body bytes;
+  process also caps body-bearing requests, reserved in-flight body bytes, and
+  concurrent planner transitions (`REENTRY_MAX_IN_FLIGHT_PLANS`);
   each demo case is also capped at 100 evidence records and 100 plan passes; live mode defaults to a separate,
   non-resettable 10-pass budget (`REENTRY_MAX_LIVE_PLAN_RUNS`, bounded to 100).
 - Document excerpts are treated as untrusted data in the Strands system prompt;

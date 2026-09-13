@@ -32,7 +32,9 @@ flowchart LR
    The demo also caps each case at 100 evidence records and 100 plan passes so
    planner input and in-memory history remain bounded. Live mode uses a
    separate non-resettable budget that defaults to 10 passes and is bounded to
-   100 by `REENTRY_MAX_LIVE_PLAN_RUNS`.
+   100 by `REENTRY_MAX_LIVE_PLAN_RUNS`. A process-wide non-blocking planner
+   semaphore (`REENTRY_MAX_IN_FLIGHT_PLANS`, default 8) rejects excess work
+   before provider calls; durable per-tenant limits remain a deployment task.
 2. The Strands-compatible coordinator builds a plan from the case snapshot.
    The demo adapter uses a deterministic `strands.Agent` + structured-output
    model with no network call. `REENTRY_MODE=live` swaps in

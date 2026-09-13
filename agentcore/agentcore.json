@@ -53,6 +53,10 @@
           "value": "268435456"
         },
         {
+          "name": "REENTRY_MAX_IN_FLIGHT_PLANS",
+          "value": "8"
+        },
+        {
           "name": "REENTRY_LIVE_ALLOW_UNREVIEWED_DATA",
           "value": "false"
         },
