@@ -234,6 +234,17 @@ async def _consume_upload(file: UploadFile, max_bytes: int) -> tuple[int, str, b
     return total, digest.hexdigest(), bytes(excerpt)
 
 
+def _safe_text_excerpt(source: bytes) -> str:
+    """Normalize an upload prefix before it is shown or sent to a planner."""
+
+    decoded = source.decode("utf-8", errors="replace")
+    sanitized = "".join(
+        " " if unicodedata.category(character) in {"Cc", "Cf"} else character
+        for character in decoded
+    )
+    return re.sub(r"\s+", " ", sanitized).strip()[:280]
+
+
 class RequestBodyLimitMiddleware:
     """Bound request bytes before Starlette parses JSON or multipart bodies."""
 
@@ -521,7 +532,7 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         raise HTTPException(status_code=400, detail="Uploaded evidence is empty")
 
     if extension in TEXT_EXTENSIONS:
-        excerpt = re.sub(r"\s+", " ", excerpt_source.decode("utf-8", errors="replace")).strip()[:280]
+        excerpt = _safe_text_excerpt(excerpt_source)
     else:
         excerpt = "Binary evidence received; visual/OCR review is required before use."
     evidence = Evidence(
