@@ -15,8 +15,8 @@ government submissions, insurance claims, or financial actions.
   upload request at the configured file limit plus 1 MB multipart overhead. It
   streams the body without retaining a replay buffer, caps the number of body
   chunks, and applies a per-chunk read deadline. Upload hashing is incremental
-  and retains only a bounded excerpt prefix. Each demo case is also capped at
-  100 evidence records and 100 plan passes; live mode defaults to a separate,
+  and retains only a bounded, control-character-sanitized excerpt prefix. Each
+  demo case is also capped at 100 evidence records and 100 plan passes; live mode defaults to a separate,
   non-resettable 10-pass budget (`REENTRY_MAX_LIVE_PLAN_RUNS`, bounded to 100).
 - Document excerpts are treated as untrusted data in the Strands system prompt;
   they cannot become tools or instructions. Live planning does not send
