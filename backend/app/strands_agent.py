@@ -107,6 +107,8 @@ instead of guessing. A separate deterministic safety gate requires a human to
 approve any action that shares personal data or creates an official case.
 """
 
+DEFAULT_REENTRY_MODEL_ID = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+
 
 def _snapshot(case: CaseState) -> str:
     return json.dumps(
@@ -182,7 +184,7 @@ def invoke_strands(case: CaseState) -> AgentPlan:
         return _snapshot(case)
 
     region = os.getenv("AWS_REGION", "us-east-1").strip() or "us-east-1"
-    model_id = os.getenv("REENTRY_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0").strip()
+    model_id = os.getenv("REENTRY_MODEL_ID", DEFAULT_REENTRY_MODEL_ID).strip()
     if not model_id or len(model_id) > 256:
         raise ValueError("REENTRY_MODEL_ID must be a non-empty model identifier")
     model = BedrockModel(

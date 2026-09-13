@@ -14,9 +14,10 @@ can be evaluated without external accounts or real personal data.
 
 The end-to-end demo slice is in place: case graph, evidence extraction,
 action queue, approval gate, connector rejection → replanning, bounded upload
-quarantine, and a Strands/Bedrock live-mode adapter. Managed AgentCore Runtime,
-Gateway credentials, durable storage, and production auth remain a deliberate
-deployment slice; see [the architecture notes](docs/architecture.md).
+quarantine, and a Strands/Bedrock live-mode adapter. A checked-in AgentCore
+HTTP runtime spec and deployment preflight are included, while Gateway
+credentials, durable storage, and account-specific production authorization
+remain a deliberate deployment slice; see [the deployment path](docs/agentcore-deployment.md).
 
 ## Local setup
 
@@ -75,7 +76,8 @@ live extras:
 
 Never commit credentials. Copy `.env.example` to a local `.env` only after
 configuring an AWS identity with the least permissions needed for the chosen
-Bedrock model.
+Bedrock model. The example uses the US geo inference profile for Claude Sonnet
+4.5; confirm model access and data-residency requirements before changing it.
 
 ## Demo path
 

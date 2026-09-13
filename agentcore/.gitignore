@@ -1,0 +1,4 @@
+# Account/region-specific deployment state must never be committed.
+aws-targets.json
+.env.local
+.cli/

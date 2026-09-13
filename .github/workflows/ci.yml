@@ -25,6 +25,9 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install -e ".[dev]"
 
+      - name: Check Python dependency consistency
+        run: python -m pip check
+
       - name: Lint Python
         run: ruff check backend tests
 

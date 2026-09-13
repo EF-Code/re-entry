@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "ReEntry",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:project": "re-entry",
+    "agentcore:purpose": "human-governed-recovery"
+  },
+  "runtimes": [
+    {
+      "name": "ReEntryRuntime",
+      "description": "HTTP runtime for the human-governed RE:ENTRY recovery planner.",
+      "build": "Container",
+      "entrypoint": "backend/app/main.py",
+      "codeLocation": ".",
+      "dockerfile": "Dockerfile",
+      "buildContextPath": ".",
+      "runtimeVersion": "PYTHON_3_12",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "authorizerType": "AWS_IAM",
+      "instrumentation": {
+        "enableOtel": true
+      },
+      "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 120,
+        "maxLifetime": 3600
+      },
+      "envVars": [
+        {
+          "name": "REENTRY_MODE",
+          "value": "demo"
+        },
+        {
+          "name": "REENTRY_CASE_ID",
+          "value": "case-042"
+        }
+      ]
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "capacityProviders": [],
+  "payments": []
+}

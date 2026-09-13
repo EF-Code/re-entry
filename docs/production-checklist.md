@@ -10,6 +10,8 @@ claim that AWS infrastructure has been deployed.
 | Human approval boundary | **done locally** | `needs_approval` actions cannot be approved by the planner and record citations/audit |
 | Untrusted document handling | **done locally** | Bounded pre-parser, upload size, extension, path/control-character checks, per-case cap, and quarantine tests |
 | Safe provider failures | **done locally** | Live-mode exceptions fall back without exposing internals |
+| Container artifact | **done locally** | Digest-pinned multi-stage image; amd64/ARM64 builds, health smoke, non-root runtime, and ~89 MB local image size |
+| Bedrock model configuration | **done locally** | Live adapter defaults to the current US Claude Sonnet 4.5 geo inference profile and keeps an explicit 1,200-token cap |
 | Authentication | pending | AgentCore IAM or CUSTOM_JWT; never `NONE` |
 | IAM scoping | pending | Exact Bedrock model ARN, ECR repository, and account-scoped trust policy |
 | Outbound credentials | pending | AgentCore Gateway targets / credential providers; no secrets in runtime env |
@@ -19,8 +21,9 @@ claim that AWS infrastructure has been deployed.
 | Quality baseline | pending | Representative cases, refusal tests, prompt-injection tests, goal-success eval |
 | Deployment | pending | AgentCore CLI/runtime config, ARM64 image, authorizer, and a verified public test URL |
 
-The local `agentcore` CLI is now installed at v0.29.0, but this repository has
-no `agentcore/agentcore.json`, AWS CLI credentials, runtime ARN, IAM receipt,
-or public AgentCore endpoint. No cloud deployment is claimed. The documented
-`docker buildx --platform linux/arm64` preflight must also be run on a builder
-with ARM64 support before an image is published.
+The local `agentcore` CLI is now installed at v0.29.0 and the repository includes
+an HTTP BYO-container spec under `agentcore/`. The account-specific
+`aws-targets.json`, AWS CLI credentials, runtime ARN, IAM receipt, and public
+AgentCore endpoint are still absent. No cloud deployment is claimed. Run
+`scripts/agentcore-preflight.sh` after configuring a target; it refuses to
+continue without an AWS identity and a valid ARM64 Dockerfile check.

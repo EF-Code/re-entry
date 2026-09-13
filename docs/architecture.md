@@ -54,9 +54,10 @@ flowchart LR
 | Demo `REENTRY_MODE=demo` | Production `REENTRY_MODE=live` with scoped Bedrock IAM |
 
 AgentCore is deliberately not claimed as deployed in this repository yet: the
-local `agentcore` CLI was unavailable during the first build slice. The code
-keeps the runtime boundary explicit so adding Runtime, Gateway, JWT/SigV4 auth,
-and managed storage does not change the approval contract.
+checked-in `agentcore/agentcore.json` is a deployment specification, not an AWS
+receipt. The code keeps the runtime boundary explicit so adding Runtime,
+Gateway, JWT/SigV4 auth, and managed storage does not change the approval
+contract.
 
 The runtime seam is now explicit locally: `/health` and `/ping` are readiness
 aliases, while `POST /invocations` accepts only a bounded `case_id` and the
