@@ -216,7 +216,7 @@ def build_demo_case() -> CaseState:
     ]
 
     trace = [
-        TraceStep(id="tr-01", agent="Evidence Extractor", status="complete", detail="Normalised 6 sources · 5 verified, 1 needs review", evidence_count=6, duration_ms=412),
+        TraceStep(id="tr-01", agent="Evidence Extractor", status="complete", detail="Normalised 6 sources · 4 verified, 1 needs review, 1 conflict", evidence_count=6, duration_ms=412),
         TraceStep(id="tr-02", agent="Requirements Planner", status="complete", detail="Found 4 obligations · 2 deadlines", evidence_count=4, action_count=4, duration_ms=286),
         TraceStep(id="tr-03", agent="Drafting Verifier", status="warning", detail="Held 1 contradiction · $460 amount mismatch", evidence_count=2, action_count=1, duration_ms=337),
         TraceStep(id="tr-04", agent="Safety Gate", status="paused", detail="1 action waiting for human approval", action_count=1, duration_ms=22),
@@ -244,4 +244,3 @@ def clone_demo_case() -> CaseState:
     """Return an independent copy so tests and requests cannot share state."""
 
     return deepcopy(build_demo_case())
-

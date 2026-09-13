@@ -116,6 +116,7 @@ def test_case_has_grounded_evidence_and_approval_gate() -> None:
     approval_actions = [a for a in payload["actions"] if a["status"] == "needs_approval"]
     assert len(approval_actions) == 1
     assert approval_actions[0]["requires_approval"] is True
+    assert payload["trace"][0]["detail"] == "Normalised 6 sources · 4 verified, 1 needs review, 1 conflict"
 
 
 def test_run_is_repeatable_and_auditable() -> None:
