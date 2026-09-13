@@ -473,6 +473,10 @@ if os.path.isdir(FRONTEND_DIR):
     def frontend_index() -> FileResponse:
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
+    @app.get("/favicon.svg", include_in_schema=False)
+    def frontend_favicon() -> FileResponse:
+        return FileResponse(os.path.join(FRONTEND_DIR, "favicon.svg"), media_type="image/svg+xml")
+
 else:
 
     @app.get("/", include_in_schema=False)
