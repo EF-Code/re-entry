@@ -88,6 +88,23 @@ def test_strands_failures_keep_the_demo_safe(monkeypatch: pytest.MonkeyPatch) ->
     assert "6 case sources" in fallback.json()["audit"][-1]["detail"]
 
 
+def test_live_strands_failure_returns_a_safe_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    client.post("/api/cases/case-042/reset")
+
+    def fail_live(_: object):
+        raise RuntimeError("provider credentials must not escape")
+
+    import app.strands_agent as strands_module
+
+    monkeypatch.setenv("REENTRY_MODE", " live ")
+    monkeypatch.setattr(strands_module, "invoke_strands", fail_live)
+    fallback = client.post("/api/cases/case-042/run")
+    assert fallback.status_code == 200
+    assert fallback.json()["mode"] == "demo-fallback"
+    assert "provider credentials" not in fallback.text
+    assert "Live planner was unavailable" in fallback.json()["audit"][-1]["detail"]
+
+
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_CASE_ID", "does-not-exist")
     response = client.get("/api/case")

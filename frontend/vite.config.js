@@ -7,6 +7,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://127.0.0.1:8000",
+      "/health": "http://127.0.0.1:8000",
+      "/ping": "http://127.0.0.1:8000",
+      "/invocations": "http://127.0.0.1:8000",
     },
   },
   build: {
@@ -14,4 +17,3 @@ export default defineConfig({
     emptyOutDir: true,
   },
 });
-
