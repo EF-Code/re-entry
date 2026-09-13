@@ -44,7 +44,7 @@ flowchart LR
 
 | Local boundary | AWS-ready boundary |
 | --- | --- |
-| FastAPI process | AgentCore Runtime or a container behind API Gateway |
+| FastAPI process | AgentCore Runtime HTTP container or a container behind API Gateway |
 | In-memory `CaseStore` | DynamoDB case/evidence records + S3 object storage |
 | `strands.Agent` live adapter | Strands Agents SDK on AgentCore Runtime |
 | Seeded mock connectors | AgentCore Gateway targets with registered credentials |
@@ -55,3 +55,9 @@ AgentCore is deliberately not claimed as deployed in this repository yet: the
 local `agentcore` CLI was unavailable during the first build slice. The code
 keeps the runtime boundary explicit so adding Runtime, Gateway, JWT/SigV4 auth,
 and managed storage does not change the approval contract.
+
+The runtime seam is now explicit locally: `/health` and `/ping` are readiness
+aliases, while `POST /invocations` accepts only a bounded `case_id` and the
+plan operation. It cannot approve, submit, or call a connector. AgentCore
+Runtime deployment still requires an ARM64 image, an authorizer, scoped IAM,
+and a verified AWS endpoint.

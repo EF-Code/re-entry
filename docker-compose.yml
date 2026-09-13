@@ -7,4 +7,11 @@ services:
       REENTRY_MODE: demo
       REENTRY_CASE_ID: case-042
     restart: unless-stopped
-
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

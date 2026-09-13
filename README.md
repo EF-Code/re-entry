@@ -53,6 +53,18 @@ docker compose up --build
 
 Then open <http://127.0.0.1:8000>.
 
+The Dockerfile is multi-platform. AgentCore Runtime requires an ARM64 image;
+build that target explicitly with BuildKit and verify the result before
+publishing it:
+
+```bash
+docker buildx build --platform linux/arm64 --load -t reentry:arm64 .
+docker image inspect reentry:arm64 --format '{{.Os}}/{{.Architecture}}'
+```
+
+The local Compose command follows the host architecture for fast development;
+the ARM64 command is the deployment preflight.
+
 The demo exercises a deterministic offline `strands.Agent` model. To enable the
 Bedrock-backed planner instead, configure AWS credentials and install the
 live extras:

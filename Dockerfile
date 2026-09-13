@@ -1,5 +1,6 @@
 # Build the React surface separately so the runtime image contains only the
-# compiled UI and the small FastAPI service.
+# compiled UI and the small FastAPI service. Pass --platform linux/arm64 to
+# docker buildx when publishing for AgentCore Runtime.
 FROM node:22-alpine AS web-build
 WORKDIR /web
 COPY frontend/package*.json ./
@@ -17,5 +18,11 @@ COPY pyproject.toml README.md LICENSE ./
 COPY backend/ ./backend/
 RUN python -m pip install --no-cache-dir --default-timeout=120 .
 COPY --from=web-build /web/dist ./frontend/dist
+RUN groupadd --system reentry \
+    && useradd --system --gid reentry --home-dir /app --no-create-home --shell /usr/sbin/nologin reentry \
+    && chown -R reentry:reentry /app
+USER reentry
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
 CMD ["uvicorn", "app.main:app", "--app-dir", "backend", "--host", "0.0.0.0", "--port", "8080"]

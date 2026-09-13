@@ -17,9 +17,10 @@ claim that AWS infrastructure has been deployed.
 | Rate limiting | pending | API Gateway/application per-user and per-tenant limits |
 | Observability | pending | X-Ray, CloudWatch retention, connector receipts and alerting |
 | Quality baseline | pending | Representative cases, refusal tests, prompt-injection tests, goal-success eval |
-| Deployment | pending | AgentCore CLI/runtime config and a verified public test URL |
+| Deployment | pending | AgentCore CLI/runtime config, ARM64 image, authorizer, and a verified public test URL |
 
-The local `agentcore` CLI was unavailable during this build slice, so there is
-no deployment SHA, runtime ARN, IAM receipt, or public AgentCore endpoint to
-claim yet.
-
+The local `agentcore` CLI is now installed at v0.29.0, but this repository has
+no `agentcore/agentcore.json`, AWS CLI credentials, runtime ARN, IAM receipt,
+or public AgentCore endpoint. No cloud deployment is claimed. The documented
+`docker buildx --platform linux/arm64` preflight must also be run on a builder
+with ARM64 support before an image is published.
