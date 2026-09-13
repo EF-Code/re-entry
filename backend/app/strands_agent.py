@@ -145,7 +145,11 @@ def _configured_allowlist(name: str, default: str, *, max_item_length: int = 256
 
     raw_value = os.getenv(name, default)
     values = {item.strip() for item in raw_value.split(",") if item.strip()}
-    if not values or any(len(item) > max_item_length for item in values):
+    if not values or any(
+        len(item) > max_item_length
+        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in item)
+        for item in values
+    ):
         raise ValueError(f"{name} must contain at least one bounded value")
     return values
 
@@ -295,7 +299,12 @@ def invoke_strands(case: CaseState) -> AgentPlan:
 
     region = os.getenv("AWS_REGION", "us-east-1").strip() or "us-east-1"
     model_id = os.getenv("REENTRY_MODEL_ID", DEFAULT_REENTRY_MODEL_ID).strip()
-    if not model_id or len(model_id) > 256:
+    if (
+        not model_id
+        or len(model_id) > 256
+        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in model_id)
+        or any(unicodedata.category(character) in {"Cc", "Cf"} for character in region)
+    ):
         raise ValueError("REENTRY_MODEL_ID must be a non-empty model identifier")
     _validate_live_model_configuration(region, model_id)
     model = BedrockModel(

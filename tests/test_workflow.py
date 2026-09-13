@@ -343,6 +343,14 @@ def test_live_model_configuration_requires_allowlisted_region_and_model(
         _validate_live_model_configuration("eu-west-1", "approved-model")
 
 
+def test_live_allowlists_reject_control_characters(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.strands_agent import _configured_allowlist
+
+    monkeypatch.setenv("REENTRY_ALLOWED_MODEL_IDS", "approved\u202e-model")
+    with pytest.raises(ValueError, match="REENTRY_ALLOWED_MODEL_IDS"):
+        _configured_allowlist("REENTRY_ALLOWED_MODEL_IDS", "fallback")
+
+
 def test_model_recommendations_are_grounded_before_use() -> None:
     from app.demo_data import clone_demo_case
 
