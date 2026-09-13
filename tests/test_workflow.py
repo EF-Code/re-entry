@@ -762,6 +762,29 @@ def test_store_rejects_revision_overflow_without_committing() -> None:
     assert local_store.get("case-042").revision == MAX_CASE_REVISION
 
 
+def test_store_revalidates_mutated_state_and_owns_identity_tokens() -> None:
+    local_store = CaseStore()
+
+    def change_identity(working):
+        working.id = "case-evil"
+        return working
+
+    with pytest.raises(ValueError, match="case_identity_mutation_forbidden"):
+        local_store.apply("case-042", change_identity)
+
+    def change_revision(working):
+        working.revision += 1
+        return working
+
+    with pytest.raises(ValueError, match="case_revision_mutation_forbidden"):
+        local_store.apply("case-042", change_revision)
+
+    oversized = local_store.get("case-042")
+    oversized.audit.extend([oversized.audit[0]] * 1_000)
+    with pytest.raises(ValueError, match="at most 1000"):
+        local_store.put(oversized)
+
+
 def test_store_apply_allows_only_one_concurrent_approval() -> None:
     from concurrent.futures import ThreadPoolExecutor
 

@@ -27,11 +27,14 @@ class CaseStore:
             return self._cases[case_id].model_copy(deep=True)
 
     def put(self, case: CaseState) -> CaseState:
+        # Callers can mutate Pydantic model containers after construction, so
+        # validate again at the store boundary before accepting a new case.
+        validated = CaseState.model_validate(case.model_dump(mode="python"))
         with self._registry_lock:
-            case_lock = self._case_locks.setdefault(case.id, RLock())
+            case_lock = self._case_locks.setdefault(validated.id, RLock())
         with case_lock, self._registry_lock:
-            self._cases[case.id] = case.model_copy(deep=True)
-            return self._cases[case.id].model_copy(deep=True)
+            self._cases[validated.id] = validated.model_copy(deep=True)
+            return self._cases[validated.id].model_copy(deep=True)
 
     def apply(self, case_id: str, transition: Callable[[CaseState], CaseState]) -> CaseState:
         """Apply one case transition while holding only that case's lock.
@@ -55,16 +58,26 @@ class CaseStore:
                 raise ValueError("case_revision_limit_reached")
             before = working.model_copy(deep=True)
             updated = transition(working)
+            if not isinstance(updated, CaseState):
+                raise TypeError("case transition must return CaseState")
+            # Re-validate after arbitrary transition code has had a chance to
+            # mutate list fields. The store owns identity and revision tokens;
+            # transitions may update domain fields but cannot rewrite either.
+            validated = CaseState.model_validate(updated.model_dump(mode="python"))
+            if validated.id != case_id:
+                raise ValueError("case_identity_mutation_forbidden")
+            if validated.revision != before.revision:
+                raise ValueError("case_revision_mutation_forbidden")
             # Idempotent transitions (for example a duplicate upload or a
             # repeated demo rejection) must not invalidate an approval that
             # was based on the current revision. Compare the complete working
             # state before advancing the optimistic-concurrency token.
-            if updated == before:
-                return updated.model_copy(deep=True)
-            updated.revision = working.revision + 1
+            if validated == before:
+                return validated.model_copy(deep=True)
+            validated.revision = before.revision + 1
             with self._registry_lock:
-                self._cases[case_id] = updated.model_copy(deep=True)
-                return updated.model_copy(deep=True)
+                self._cases[case_id] = validated.model_copy(deep=True)
+                return validated.model_copy(deep=True)
 
     def reset(self, case_id: str) -> CaseState:
         case_lock = self._lock_for(case_id)
