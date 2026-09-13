@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools==84.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,23 +11,25 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "EF-Code" }]
 dependencies = [
-  "fastapi>=0.115.0",
-  "pydantic>=2.7.0",
-  "python-multipart>=0.0.20",
-  "strands-agents>=1.0.0",
-  "uvicorn[standard]>=0.30.0",
+  # Direct dependencies are pinned; transitive hashes are tracked as a
+  # production follow-up in docs/production-checklist.md.
+  "fastapi==0.141.1",
+  "pydantic==2.13.4",
+  "python-multipart==0.0.32",
+  "strands-agents==1.55.1",
+  "uvicorn[standard]==0.52.4",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "httpx>=0.28.0",
-  "bandit>=1.8.0",
-  "pip-audit>=2.9.0",
-  "pytest>=8.3.0",
-  "ruff>=0.12.0",
+  "httpx==0.28.1",
+  "bandit==1.9.4",
+  "pip-audit==2.10.1",
+  "pytest==9.1.1",
+  "ruff==0.16.7",
 ]
 live = [
-  "boto3>=1.40.0",
+  "boto3==1.43.93",
 ]
 
 [tool.setuptools]

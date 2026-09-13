@@ -61,6 +61,9 @@ government submissions, insurance claims, or financial actions.
   accident.
 - No credentials, `.env` files, uploads, local databases, or build caches are
   tracked by Git.
+- Direct Python runtime, live, and development requirements are pinned to the
+  versions verified by CI; a transitive lockfile with artifact hashes is still
+  required for a production release.
 
 ## Before a real deployment
 
