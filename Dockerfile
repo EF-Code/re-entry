@@ -4,7 +4,11 @@
 FROM node:22-alpine AS web-build
 WORKDIR /web
 COPY frontend/package*.json ./
-RUN npm ci --no-audit --no-fund
+# Installing without lifecycle scripts avoids an Alpine/overlayfs race where
+# esbuild's postinstall can observe its just-extracted binary as busy. Rebuild
+# that one native helper in a separate layer before compiling the UI.
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+    && npm rebuild esbuild --foreground-scripts --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
