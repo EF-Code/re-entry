@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -52,6 +53,8 @@ app.add_middleware(
 store = CaseStore()
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_CONFIGURED_UPLOAD_BYTES = 100 * 1024 * 1024
+DEFAULT_REQUEST_READ_TIMEOUT_SECONDS = 30
+MAX_CONFIGURED_REQUEST_READ_TIMEOUT_SECONDS = 300
 
 
 def _configured_upload_limit() -> int:
@@ -67,6 +70,25 @@ def _configured_upload_limit() -> int:
     return value
 
 
+def _configured_request_read_timeout() -> float:
+    raw_value = os.getenv(
+        "REENTRY_REQUEST_READ_TIMEOUT_SECONDS",
+        str(DEFAULT_REQUEST_READ_TIMEOUT_SECONDS),
+    )
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "REENTRY_REQUEST_READ_TIMEOUT_SECONDS must be a positive number"
+        ) from exc
+    if not 1 <= value <= MAX_CONFIGURED_REQUEST_READ_TIMEOUT_SECONDS:
+        raise RuntimeError(
+            "REENTRY_REQUEST_READ_TIMEOUT_SECONDS must be between 1 and "
+            f"{MAX_CONFIGURED_REQUEST_READ_TIMEOUT_SECONDS}"
+        )
+    return value
+
+
 def _format_size(value: int) -> str:
     if value % (1024 * 1024) == 0:
         return f"{value // (1024 * 1024)} MB"
@@ -77,6 +99,7 @@ def _format_size(value: int) -> str:
 
 MAX_UPLOAD_BYTES = _configured_upload_limit()
 MAX_UPLOAD_LABEL = _format_size(MAX_UPLOAD_BYTES)
+REQUEST_READ_TIMEOUT_SECONDS = _configured_request_read_timeout()
 MAX_JSON_BODY_BYTES = 64 * 1024
 MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MAX_CASE_EVIDENCE = 100
@@ -91,6 +114,14 @@ TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
 
 class RequestBodyTooLargeError(Exception):
     """Raised by the streaming receiver before a parser can overrun its cap."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+class RequestBodyReadTimeoutError(Exception):
+    """Raised when a client stalls between bounded body chunks."""
 
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
@@ -193,7 +224,10 @@ class RequestBodyLimitMiddleware:
 
         async def limited_receive() -> dict[str, object]:
             nonlocal received_bytes, received_chunks
-            message = await receive()
+            try:
+                message = await asyncio.wait_for(receive(), timeout=REQUEST_READ_TIMEOUT_SECONDS)
+            except TimeoutError as exc:
+                raise RequestBodyReadTimeoutError("Request body read timed out") from exc
             if message["type"] == "http.request":
                 received_chunks += 1
                 if received_chunks > MAX_REQUEST_CHUNKS:
@@ -207,6 +241,8 @@ class RequestBodyLimitMiddleware:
             await self.app(scope, limited_receive, send)
         except RequestBodyTooLargeError as exc:
             await _send_limit_error(scope, send, 413, exc.detail)
+        except RequestBodyReadTimeoutError as exc:
+            await _send_limit_error(scope, send, 408, exc.detail)
 
 
 @app.middleware("http")
@@ -233,6 +269,13 @@ async def handle_unexpected_error(request: Request, exc: Exception) -> JSONRespo
 @app.exception_handler(RequestBodyTooLargeError)
 async def handle_body_limit_error(request: Request, exc: RequestBodyTooLargeError) -> JSONResponse:
     response = JSONResponse(status_code=413, content={"detail": exc.detail})
+    _set_security_headers(response, request.url.path)
+    return response
+
+
+@app.exception_handler(RequestBodyReadTimeoutError)
+async def handle_body_timeout_error(request: Request, exc: RequestBodyReadTimeoutError) -> JSONResponse:
+    response = JSONResponse(status_code=408, content={"detail": exc.detail})
     _set_security_headers(response, request.url.path)
     return response
 

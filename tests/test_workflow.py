@@ -107,6 +107,27 @@ def test_streaming_request_receiver_rejects_over_limit_body() -> None:
     assert sent[0]["status"] == 413
 
 
+def test_streaming_request_receiver_times_out_stalled_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.main import RequestBodyLimitMiddleware
+
+    monkeypatch.setattr(main_module, "REQUEST_READ_TIMEOUT_SECONDS", 0.01)
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        await asyncio.sleep(0.05)
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    async def downstream(scope, limited_receive, downstream_send) -> None:
+        await limited_receive()
+
+    scope = {"type": "http", "method": "POST", "path": "/invocations", "headers": []}
+    asyncio.run(RequestBodyLimitMiddleware(downstream)(scope, receive, send))
+    assert sent[0]["status"] == 408
+
+
 def test_case_resource_caps_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     client.post("/api/cases/case-042/reset")
     monkeypatch.setattr(main_module, "MAX_CASE_EVIDENCE", 6)
@@ -398,3 +419,7 @@ def test_upload_limit_configuration_rejects_invalid_values(monkeypatch: pytest.M
     monkeypatch.setenv("REENTRY_MAX_UPLOAD_BYTES", "not-a-number")
     with pytest.raises(RuntimeError, match="positive integer"):
         main_module._configured_upload_limit()
+
+    monkeypatch.setenv("REENTRY_REQUEST_READ_TIMEOUT_SECONDS", "0")
+    with pytest.raises(RuntimeError, match="between 1"):
+        main_module._configured_request_read_timeout()
