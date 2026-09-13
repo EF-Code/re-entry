@@ -201,6 +201,18 @@ def test_model_recommendations_are_grounded_before_use() -> None:
     assert overconfident.warnings == ["Planner confidence was capped at the case confidence."]
 
 
+def test_model_narrative_is_normalized_before_audit_use() -> None:
+    plan = AgentPlan(
+        summary="  Grounded\tplan  ",
+        warnings=["  Review\tneeded  "],
+        confidence=0.5,
+    )
+    assert plan.summary == "Grounded plan"
+    assert plan.warnings == ["Review needed"]
+    with pytest.raises(ValueError, match="control character"):
+        AgentPlan(summary="unsafe\u0000summary", confidence=0.5)
+
+
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_CASE_ID", "does-not-exist")
     response = client.get("/api/case")

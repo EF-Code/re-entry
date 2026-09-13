@@ -13,12 +13,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import unicodedata
 import warnings
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 try:
     from strands.models.model import Model
@@ -43,6 +44,34 @@ class AgentPlan(BaseModel):
         default_factory=list, max_length=10
     )
     confidence: float = Field(ge=0, le=1)
+
+    @field_validator("summary")
+    @classmethod
+    def summary_is_single_line_text(cls, value: str) -> str:
+        if any(
+            unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\t", "\n", "\r"}
+            for character in value
+        ):
+            raise ValueError("summary contains an unsupported control character")
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("summary must contain text")
+        return cleaned
+
+    @field_validator("warnings")
+    @classmethod
+    def warnings_are_single_line_text(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for warning in value:
+            if any(
+                unicodedata.category(character) in {"Cc", "Cf"} and character not in {"\t", "\n", "\r"}
+                for character in warning
+            ):
+                raise ValueError("warning contains an unsupported control character")
+            normalized = " ".join(warning.split())
+            if normalized:
+                cleaned.append(normalized)
+        return cleaned
 
 
 @dataclass(frozen=True)
