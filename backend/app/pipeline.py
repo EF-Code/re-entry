@@ -42,12 +42,15 @@ def run_intake(case: CaseState) -> CaseState:
     review_count = sum(e.status == EvidenceStatus.needs_review for e in case.evidence)
     conflict_count = sum(e.status == EvidenceStatus.conflict for e in case.evidence)
     approval_count = sum(a.status == ActionStatus.needs_approval for a in case.actions)
+    evidence_breakdown = [f"{verified_count} verified", f"{review_count} needs review"]
+    if conflict_count:
+        evidence_breakdown.append(f"{conflict_count} conflict")
     case.trace = [
         TraceStep(
             id="tr-01",
             agent="Evidence Extractor",
             status="complete",
-            detail=f"Normalised {len(case.evidence)} sources · {verified_count} verified, {review_count} needs review",
+            detail=f"Normalised {len(case.evidence)} sources · {', '.join(evidence_breakdown)}",
             evidence_count=len(case.evidence),
             duration_ms=412,
         ),

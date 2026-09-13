@@ -63,13 +63,13 @@ def test_trace_counts_follow_case_mutations() -> None:
     )
     assert uploaded.status_code == 200
     after_upload = client.post("/api/cases/case-042/run").json()
-    assert after_upload["trace"][0]["detail"].startswith("Normalised 7 sources")
+    assert after_upload["trace"][0]["detail"].startswith("Normalised 7 sources · 4 verified, 2 needs review, 1 conflict")
     assert after_upload["trace"][0]["evidence_count"] == 7
 
     rejected = client.post("/api/cases/case-042/simulate-rejection")
     assert rejected.status_code == 200
     after_rejection = client.post("/api/cases/case-042/run").json()
-    assert after_rejection["trace"][0]["detail"].startswith("Normalised 8 sources")
+    assert after_rejection["trace"][0]["detail"].startswith("Normalised 8 sources · 4 verified, 3 needs review, 1 conflict")
     assert after_rejection["trace"][3]["action_count"] == 2
 
 
