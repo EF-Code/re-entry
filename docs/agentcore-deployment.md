@@ -12,9 +12,10 @@ BYO-container HTTP runtime:
 - Non-secret live policy variables are checked into the spec: verified-only
   provider data, explicit US region/model allowlists, a 10-pass live budget,
   and the ephemeral-store guard set to false.
-- The local runtime disables interactive docs/OpenAPI, rejects slow or
-  over-limit request bodies before parsing, and keeps demo reset/rejection
-  routes unavailable when `REENTRY_MODE=live`.
+- The local runtime disables interactive docs/OpenAPI, rejects over-limit or
+  slow request bodies before parsing (with both per-chunk and absolute
+  deadlines), and keeps demo reset/rejection routes unavailable when
+  `REENTRY_MODE=live`.
 
 The committed values intentionally use `REENTRY_MODE=demo` and synthetic case
 data. Do not switch to live mode until durable storage, an approved Bedrock
