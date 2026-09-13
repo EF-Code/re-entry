@@ -193,6 +193,13 @@ def test_model_recommendations_are_grounded_before_use() -> None:
     assert grounded.recommended_action_ids == ["act-02"]
     assert grounded.warnings == ["Planner recommendations were limited to known actions awaiting approval."]
 
+    overconfident = _ground_plan(
+        plan.model_copy(update={"recommended_action_ids": [], "confidence": 1.0}),
+        case,
+    )
+    assert overconfident.confidence == case.confidence
+    assert overconfident.warnings == ["Planner confidence was capped at the case confidence."]
+
 
 def test_default_case_configuration_is_a_safe_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_CASE_ID", "does-not-exist")

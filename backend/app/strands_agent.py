@@ -138,7 +138,16 @@ def _ground_plan(plan: AgentPlan, case: CaseState) -> AgentPlan:
     warnings = list(plan.warnings)
     if len(recommended_ids) != len(plan.recommended_action_ids):
         warnings = (warnings + ["Planner recommendations were limited to known actions awaiting approval."])[:10]
-    return plan.model_copy(update={"recommended_action_ids": recommended_ids, "warnings": warnings})
+    confidence = min(plan.confidence, case.confidence)
+    if confidence < plan.confidence:
+        warnings = (warnings + ["Planner confidence was capped at the case confidence."])[:10]
+    return plan.model_copy(
+        update={
+            "recommended_action_ids": recommended_ids,
+            "warnings": warnings,
+            "confidence": confidence,
+        }
+    )
 
 
 def invoke_demo_strands(case: CaseState) -> AgentPlan:
