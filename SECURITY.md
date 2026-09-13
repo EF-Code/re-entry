@@ -26,6 +26,9 @@ government submissions, insurance claims, or financial actions.
 - `/health`, `/ping`, and `/api/*` responses are marked non-cacheable and the
   compiled UI receives clickjacking, MIME-sniffing, referrer, permissions, and
   strict same-origin CSP headers.
+- The local Compose profile binds its unauthenticated demo port to
+  `127.0.0.1` so synthetic case mutations are not exposed to the LAN by
+  accident.
 - No credentials, `.env` files, uploads, local databases, or build caches are
   tracked by Git.
 
