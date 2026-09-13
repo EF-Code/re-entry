@@ -1,6 +1,8 @@
 import pytest
 from app import main as main_module
 from app.main import app
+from app.pipeline import approve_action
+from app.store import CaseStore
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -127,6 +129,30 @@ def test_approval_requires_the_gate_and_records_receipt() -> None:
         json={"reviewer": "   ", "note": "Nope"},
     )
     assert whitespace_reviewer.status_code == 422
+
+
+def test_store_apply_allows_only_one_concurrent_approval() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    local_store = CaseStore()
+
+    def approve_transition(case):
+        return approve_action(case, "act-02", "Concurrent reviewer", "Checked")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(local_store.apply, "case-042", approve_transition) for _ in range(8)]
+
+    successes = 0
+    for future in futures:
+        try:
+            future.result()
+            successes += 1
+        except ValueError:
+            pass
+    assert successes == 1
+    final_case = local_store.get("case-042")
+    assert sum(action.status.value == "completed" for action in final_case.actions if action.id == "act-02") == 1
+    assert sum(event.event_type == "action.approved" for event in final_case.audit) == 1
 
 
 def test_rejection_becomes_evidence_and_replans_once() -> None:

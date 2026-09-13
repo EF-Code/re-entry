@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from threading import RLock
 
 from .demo_data import clone_demo_case
@@ -25,10 +26,25 @@ class CaseStore:
             self._cases[case.id] = case.model_copy(deep=True)
             return case.model_copy(deep=True)
 
+    def apply(self, case_id: str, transition: Callable[[CaseState], CaseState]) -> CaseState:
+        """Apply one case transition while holding the store lock.
+
+        The demo runs in one process, so this prevents duplicate approvals and
+        lost updates between concurrent requests. A durable multi-worker store
+        remains required for production deployment.
+        """
+
+        with self._lock:
+            case = self._cases.get(case_id)
+            if case is None:
+                raise KeyError("case_not_found")
+            updated = transition(case.model_copy(deep=True))
+            self._cases[case_id] = updated.model_copy(deep=True)
+            return updated.model_copy(deep=True)
+
     def reset(self, case_id: str) -> CaseState:
         with self._lock:
             if case_id != "case-042":
                 raise KeyError("case_not_found")
             self._cases[case_id] = clone_demo_case()
             return self._cases[case_id].model_copy(deep=True)
-

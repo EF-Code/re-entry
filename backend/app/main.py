@@ -121,8 +121,11 @@ def _case_or_404(case_id: str) -> CaseState:
 def invoke_runtime(request: RuntimeInvocation) -> CaseState:
     """Expose a safe plan-only HTTP entrypoint for an AgentCore Runtime adapter."""
 
-    case = _case_or_404(request.case_id or _default_case_id())
-    return store.put(run_intake(case))
+    case_id = request.case_id or _default_case_id()
+    try:
+        return store.apply(case_id, run_intake)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Case not found") from exc
 
 
 @app.get("/api/cases/{case_id}", response_model=CaseState)
@@ -132,30 +135,36 @@ def get_case(case_id: str) -> CaseState:
 
 @app.post("/api/cases/{case_id}/run", response_model=CaseState)
 def run_case(case_id: str) -> CaseState:
-    case = _case_or_404(case_id)
-    return store.put(run_intake(case))
+    _case_or_404(case_id)
+    try:
+        return store.apply(case_id, run_intake)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Case not found") from exc
 
 
 @app.post("/api/cases/{case_id}/actions/{action_id}/approve", response_model=CaseState)
 def approve_case_action(case_id: str, action_id: str, request: ApprovalRequest) -> CaseState:
-    case = _case_or_404(case_id)
+    _case_or_404(case_id)
     try:
-        updated = approve_action(case, action_id, request.reviewer, request.note)
+        return store.apply(
+            case_id,
+            lambda case: approve_action(case, action_id, request.reviewer, request.note),
+        )
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Action not found") from exc
+        detail = "Case not found" if exc.args and exc.args[0] == "case_not_found" else "Action not found"
+        raise HTTPException(status_code=404, detail=detail) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail="Action is not waiting for approval") from exc
-    return store.put(updated)
 
 
 @app.post("/api/cases/{case_id}/simulate-rejection", response_model=CaseState)
 def reject_case_action(case_id: str) -> CaseState:
-    case = _case_or_404(case_id)
+    _case_or_404(case_id)
     try:
-        updated = simulate_rejection(case)
+        return store.apply(case_id, simulate_rejection)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Insurer action not found") from exc
-    return store.put(updated)
+        detail = "Case not found" if exc.args and exc.args[0] == "case_not_found" else "Insurer action not found"
+        raise HTTPException(status_code=404, detail=detail) from exc
 
 
 @app.post("/api/cases/{case_id}/reset", response_model=CaseState)
@@ -168,7 +177,7 @@ def reset_case(case_id: str) -> CaseState:
 
 @app.post("/api/cases/{case_id}/evidence", response_model=UploadReceipt)
 async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadReceipt:  # noqa: B008
-    case = _case_or_404(case_id)
+    _case_or_404(case_id)
     raw_name = file.filename or ""
     safe_name = PurePath(raw_name).name
     extension = PurePath(safe_name).suffix.lower()
@@ -209,7 +218,9 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         tags=["uploaded", "needs-review"],
         content_hash=f"sha256:{full_hash}",
     )
-    if not any(item.id == evidence.id for item in case.evidence):
+    def add_evidence(case: CaseState) -> CaseState:
+        if any(item.id == evidence.id for item in case.evidence):
+            return case
         case.evidence.append(evidence)
         case.audit.append(
             AuditEvent(
@@ -222,8 +233,14 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
                 reversible=True,
             )
         )
-        store.put(case)
-    return UploadReceipt(evidence=evidence, message="Evidence quarantined for review; no action was sent.")
+        return case
+
+    try:
+        updated = store.apply(case_id, add_evidence)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Case not found") from exc
+    stored_evidence = next(item for item in updated.evidence if item.id == evidence.id)
+    return UploadReceipt(evidence=stored_evidence, message="Evidence quarantined for review; no action was sent.")
 
 
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
