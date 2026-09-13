@@ -15,6 +15,7 @@ data/
 uploads/
 *.db
 .devpost-hackathon-state.json
+devpost-submission.md
 
 # Frontend
 node_modules/
