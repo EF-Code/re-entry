@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-python_bin=${PYTHON_BIN:-/home/hiro/.venv/bin/python}
+python_bin=${PYTHON_BIN:-"$HOME/.venv/bin/python"}
 config_file="$repo_root/agentcore/agentcore.json"
 targets_file="$repo_root/agentcore/aws-targets.json"
 
@@ -14,6 +14,11 @@ fail() {
 command -v agentcore >/dev/null 2>&1 || fail "agentcore CLI is required"
 command -v docker >/dev/null 2>&1 || fail "Docker is required"
 command -v aws >/dev/null 2>&1 || fail "AWS CLI v2 is required; install it before deployment"
+aws_version=$(aws --version 2>&1 || true)
+case "$aws_version" in
+  aws-cli/2.*) ;;
+  *) fail "AWS CLI v2 is required; found: ${aws_version:-unknown}" ;;
+esac
 [ -x "$python_bin" ] || fail "Python environment not found at $python_bin"
 [ -f "$config_file" ] || fail "missing agentcore/agentcore.json"
 [ -f "$targets_file" ] || fail "copy agentcore/aws-targets.example.json to agentcore/aws-targets.json and set your account"
@@ -49,10 +54,23 @@ if runtime.get("networkMode") == "PUBLIC":
 lifecycle = runtime.get("lifecycleConfiguration", {})
 idle_timeout = lifecycle.get("idleRuntimeSessionTimeout")
 max_lifetime = lifecycle.get("maxLifetime")
-if idle_timeout is None or max_lifetime is None or idle_timeout > max_lifetime:
+if (
+    not isinstance(idle_timeout, int)
+    or not isinstance(max_lifetime, int)
+    or idle_timeout < 60
+    or max_lifetime > 28_800
+    or idle_timeout > max_lifetime
+):
     raise SystemExit("ERROR: idle session timeout must be set and cannot exceed max lifetime")
-if not targets or any(not re.fullmatch(r"\d{12}", item.get("account", "")) for item in targets):
-    raise SystemExit("ERROR: deployment targets must contain 12-digit AWS account IDs")
+if not isinstance(targets, list) or not targets:
+    raise SystemExit("ERROR: deployment targets must be a non-empty JSON list")
+for target in targets:
+    if not isinstance(target, dict):
+        raise SystemExit("ERROR: each deployment target must be a JSON object")
+    if not re.fullmatch(r"\d{12}", str(target.get("account", ""))):
+        raise SystemExit("ERROR: deployment targets must contain 12-digit AWS account IDs")
+    if not re.fullmatch(r"[a-z0-9-]{1,32}", str(target.get("region", ""))):
+        raise SystemExit("ERROR: each deployment target must contain a valid AWS region")
 entrypoint = repo_root / runtime["entrypoint"]
 dockerfile = repo_root / runtime.get("dockerfile", "Dockerfile")
 if not entrypoint.is_file():
@@ -77,7 +95,10 @@ config = json.loads(pathlib.Path(sys.argv[1]).read_text())
 targets = json.loads(pathlib.Path(sys.argv[2]).read_text())
 runtime = config["runtimes"][0]
 env_vars = {item["name"]: item["value"] for item in runtime.get("envVars", [])}
-print(targets[0]["region"], env_vars.get("REENTRY_MODE", "demo"), env_vars.get("REENTRY_MODEL_ID", ""))
+mode = str(env_vars.get("REENTRY_MODE", "demo")).strip().lower() or "demo"
+if mode not in {"demo", "live"}:
+    raise SystemExit(f"ERROR: unsupported REENTRY_MODE: {mode}")
+print(targets[0]["region"], mode, str(env_vars.get("REENTRY_MODEL_ID", "")).strip())
 PY
 )
 if [ "$runtime_mode" = "live" ]; then
