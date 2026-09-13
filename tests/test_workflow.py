@@ -871,6 +871,15 @@ def test_upload_rejects_format_controls_and_overlong_names() -> None:
     assert long_name.status_code == 415
 
 
+def test_upload_rejects_obvious_binary_extension_mismatch() -> None:
+    response = client.post(
+        "/api/cases/case-042/evidence",
+        files={"file": ("photo.png", b"not a PNG", "image/png")},
+    )
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Uploaded evidence content does not match its filename extension"
+
+
 def test_upload_limit_configuration_rejects_invalid_values(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REENTRY_MAX_UPLOAD_BYTES", "-1")
     with pytest.raises(RuntimeError, match="between 1"):

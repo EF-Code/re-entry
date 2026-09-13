@@ -178,6 +178,12 @@ UPLOAD_READ_CHUNK_BYTES = 64 * 1024
 MAX_REQUEST_CHUNKS = 4096
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg"}
 TEXT_EXTENSIONS = {".txt", ".md", ".csv"}
+UPLOAD_SIGNATURES = {
+    ".pdf": (b"%PDF-",),
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".jpeg": (b"\xff\xd8\xff",),
+}
 
 
 class RequestBodyTooLargeError(Exception):
@@ -352,6 +358,17 @@ def _safe_text_excerpt(source: bytes) -> str:
         for character in decoded
     )
     return re.sub(r"\s+", " ", sanitized).strip()[:280]
+
+
+def _upload_signature_matches(extension: str, prefix: bytes) -> bool:
+    """Reject obvious extension/content mismatches before downstream use."""
+
+    signatures = UPLOAD_SIGNATURES.get(extension)
+    if signatures is None:
+        # Plain-text formats are intentionally decoded and quarantined rather
+        # than parsed as executable content. Their MIME header is caller input.
+        return True
+    return any(prefix.startswith(signature) for signature in signatures)
 
 
 class RequestBodyLimitMiddleware:
@@ -681,6 +698,11 @@ async def upload_evidence(case_id: str, file: UploadFile = File(...)) -> UploadR
         await file.close()
     if total_size == 0:
         raise HTTPException(status_code=400, detail="Uploaded evidence is empty")
+    if not _upload_signature_matches(extension, excerpt_source):
+        raise HTTPException(
+            status_code=415,
+            detail="Uploaded evidence content does not match its filename extension",
+        )
 
     if extension in TEXT_EXTENSIONS:
         excerpt = _safe_text_excerpt(excerpt_source)
